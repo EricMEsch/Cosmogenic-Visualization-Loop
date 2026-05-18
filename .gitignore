@@ -1,0 +1,21 @@
+out/
+gdml
+musun
+
+# editors
+.vscode/
+.idea/
+
+# mac/linux junk
+.DS_Store
+
+# python
+__pycache__/
+*.pyc
+
+#pre-commit
+.ruff_cache/
+
+# logs/output
+*.log
+*.lh5

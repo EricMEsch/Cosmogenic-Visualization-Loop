@@ -1,0 +1,49 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%%      listing of gamma cascades by *revealed in dream*
+
+%%
+
+%%   H1+N  K
+
+%%
+
+%%   E_n= 5 keV
+
+%%
+
+%% date: 20251120 time: 144656.105/lgessler
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%$$%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%% En: neutron energy  [keV]
+
+%% Ex: excitation energy [keV]
+
+%% M:   multiplicity of gamma cascade;    M_max=20
+
+%% Em: missing energy [keV]
+
+%%              :=0 ground state after capture
+
+%%              :=E_iso isomeric state after capture
+
+%%   & M=M_max  :=E_left  left out due too many gammas
+
+%% Eg1: energy of first photon [keV]
+
+%% Eg2: energy of 2nd photon [keV] .....  EgM
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%% variables:
+
+%% En/keV Ex/kev  M  Em/keV Eg1/keV Eg2/kev Eg3/kev etc.. EgM
+
+%% format   :
+
+%%  i6    i6 i3    i6    i6    i6    i6    i6    i6    i6    i6    i6
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+     5  2223  1     0  2223
