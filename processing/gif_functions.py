@@ -2,6 +2,9 @@ import numpy as np
 import awkward as ak
 from glob import glob
 from lgdo import lh5
+import matplotlib
+
+matplotlib.use("Agg")
 from reboost_functions import align_detectors, build_hardware_triggers, build_hits
 import matplotlib.pyplot as plt
 from matplotlib.gridspec import GridSpec
