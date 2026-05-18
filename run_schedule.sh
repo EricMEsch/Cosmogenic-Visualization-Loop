@@ -13,8 +13,8 @@ cleanup() {
 # Trap Ctrl+C and termination signals
 trap cleanup SIGINT SIGTERM EXIT
 
-python3 launch_workers.py
-python3 scheduler.py
+python3 scheduling/launch_workers.py
+python3 scheduling/scheduler.py
 
 # Things to do:
 # Speed up the rendering even more.

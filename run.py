@@ -1,5 +1,8 @@
 import argparse
 import os
+import sys
+
+sys.path.append("processing")
 from gif_functions import read_files, render_gif
 from sim_functions import select_random_muons, run_sim
 import time

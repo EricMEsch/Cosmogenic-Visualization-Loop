@@ -1,7 +1,10 @@
 import time
 import yaml
 import os
-from run_sim import run_gif
+import sys
+
+sys.path.append(".")  # Because we run this from the parent folder.
+from run import run_gif
 import fcntl
 
 QUEUE_FILE = "out/queue.yaml"

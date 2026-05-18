@@ -6,7 +6,7 @@ MAX_WORKERS = 3
 for i in range(MAX_WORKERS):
     log_file = f"worker_{i}.log"
 
-    # cmd = f"python3 worker.py {i} > {log_file} 2>&1"
-    cmd = f"python3 worker.py {i}"
+    # cmd = f"python3 scheduling/worker.py {i} > {log_file} 2>&1"
+    cmd = f"python3 scheduling/worker.py {i}"
 
     subprocess.Popen(["tmux", "new-session", "-d", "-s", f"worker{i}", cmd])
