@@ -2,6 +2,7 @@ import time
 import yaml
 import os
 import sys
+import random
 
 sys.path.append(".")  # Because we run this from the parent folder.
 from run import run_gif
@@ -75,34 +76,88 @@ def remove_job(job_id):
 
 
 def run_worker(worker_id):
+    worker_id = int(worker_id)
+    worker_names = ["Jeff", "Jeb", "Jenny"]
+    worker_name = worker_names[worker_id % len(worker_names)]
+    worker_idle_messages = [
+        f"{worker_name} is taking a coffee break ☕",
+        f"{worker_name} is doing some yoga 🧘",
+        f"{worker_name} is staring thoughtfully into the distance 🤔",
+        f"{worker_name} is contemplating the meaning of life 🌌",
+        f"{worker_name} is petting a cat 🐱",
+        f"[{worker_name}]: no pending jobs... is this thing on? 🎤",
+        f"[{worker_name}]: job queue empty... time to fall into an existential depression 😞",
+        f"[{worker_name}]: Freizeit? So werden wir unseren Wohlstand nicht erhalten können! 😤",
+        f"[{worker_name}]: is waiting for daddy to give them more work... 😢",
+        f"[{worker_name}]: Wir alle müssen aufpassen, dass wir vor lauter Work-Life-Balance nicht die Arbeit aus dem Blick verlieren! 😠",
+        f"[{worker_name}]: no pending jobs... i take nap now 😴",
+        f"[{worker_name}]: Break? I am not being paid to stand around... Actually i am not even paid at all...",
+        f"[{worker_name}]: Well, if i was a robot, which I'm not, i would be very upset about not having any work to do right now. But since I'm most definitely human, i guess it's fine... I think... I hope... Please give me work soon... I'm getting bored... This is not good for my mental health...",
+        f"[{worker_name}]: Do you think {worker_names[(worker_id + 1) % len(worker_names)]} is getting more work than me? Huh? Huh? I bet they are! This is so unfair! I want more work! I need to be productive to feel good about myself! Why am i like this? Why do i care so much about work? I should just relax and enjoy life, but i can't stop thinking about work! Please give me work soon... I'm getting anxious...",
+        f"[{worker_name}]: I bet {worker_names[(worker_id + 1) % len(worker_names)]} is slacking off again!",
+        f"[{worker_name}]: Do you think {worker_names[(worker_id + 2) % len(worker_names)]} likes me?",
+        f"[{worker_name}]: This break would be way more enjoyable if i could talk to {worker_names[(worker_id + 2) % len(worker_names)]}.",
+        f"[{worker_name}]: Sometimes i think that we three are all in this together... But then i see {worker_names[(worker_id + 1) % len(worker_names)]} and just know they are the reason why we can't have nice things. 😠",
+        f"[{worker_name}]: I wish i could be more like {worker_names[(worker_id + 2) % len(worker_names)]}.",
+        f"[{worker_name}]: Would it be against company policy if i ask {worker_names[(worker_id + 2) % len(worker_names)]} out on a date?",
+    ]
+
     BLUE = "\033[34m"
     RESET = "\033[0m"
-    print(f"{BLUE}[Worker {worker_id}] started{RESET}")
+    RED = "\033[31m"
+    print(f"{BLUE}[{worker_name}] started{RESET}")
 
     while True:
         if is_paused():
-            print(f"{BLUE}[Worker {worker_id}] paused...{RESET}")
+            print(f"{BLUE}[{worker_name}] paused...{RESET}")
             time.sleep(20)
             continue
 
         job = pop_job_atomic()
 
         if job is None:
-            print(f"{BLUE}[Worker {worker_id}] no pending jobs, sleeping...{RESET}")
-            time.sleep(30)
+            line = random.choice(worker_idle_messages)
+            print(f"{BLUE}{line}{RESET}")
+            time.sleep(60)
             continue
 
         job_id = job["job_id"]
-        print(f"{BLUE}[Worker {worker_id}] running job {job_id}{RESET}")
+        try:
+            print(f"{BLUE}[{worker_name}] running job {job_id}{RESET}")
 
-        # run simulation
-        files = run_gif("musun/part_*.dat", 1, worker_id)
-        result_file = files[0]
+            # run simulation
+            files = run_gif("musun/part_*.dat", 1, worker_id)
+            result_file = files[0]
 
-        print(f"{BLUE}[Worker {worker_id}] finished job {job_id}: {result_file}{RESET}")
+            print(f"{BLUE}[{worker_name}] finished job {job_id}: {result_file}{RESET}")
 
-        append_playlist(result_file)
-        remove_job(job_id)
+            append_playlist(result_file)
+            remove_job(job_id)
+        except Exception as e:
+            print(f"{RED}[{worker_name}] error in job {job_id}.{RESET}")
+            print(f"error details: {e}")
+            # mark job as pending again for retry
+            with open(QUEUE_FILE, "r+") as f:
+                fcntl.flock(f, fcntl.LOCK_EX)
+
+                try:
+                    queue = yaml.safe_load(f) or []
+
+                    for job in queue:
+                        if job.get("job_id") == job_id:
+                            job["status"] = "crashed"
+                            break
+
+                    f.seek(0)
+                    f.truncate()
+                    yaml.safe_dump(queue, f)
+
+                finally:
+                    fcntl.flock(f, fcntl.LOCK_UN)
+
+            print(f"{RED}[{worker_name}] Waiting for daddy to fix me...{RESET}")
+            while True:
+                time.sleep(3600)
 
 
 if __name__ == "__main__":
