@@ -1,6 +1,8 @@
 import os
 import yaml
 import time
+import subprocess
+from launch_workers import MAX_WORKERS
 
 QUEUE_FILE = "out/queue.yaml"
 PLAYLIST_FILE = "out/playlist.yaml"
@@ -37,6 +39,27 @@ def add_jobs(n):
     save(QUEUE_FILE, queue)
 
 
+def worker_alive(i):
+    session = f"worker{i}"
+    result = subprocess.run(
+        ["tmux", "has-session", "-t", session],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    return result.returncode == 0
+
+
+def check_workers():
+    BLUE = "\033[34m"
+    RESET = "\033[0m"
+
+    for i in range(MAX_WORKERS):
+        if not worker_alive(i):
+            print(f"{BLUE}[Scheduler] worker{i} is DEAD{RESET}")
+        else:
+            print(f"{BLUE}[Scheduler] worker{i} is still alive{RESET}")
+
+
 def main():
     BLUE = "\033[34m"
     RESET = "\033[0m"
@@ -53,6 +76,8 @@ def main():
             print(f"{BLUE}[Scheduler] adding {missing} jobs{RESET}")
             add_jobs(missing)
 
+        print(f"{BLUE}[Scheduler] Checking worker status...{RESET}")
+        check_workers()
         print(f"{BLUE}[Scheduler] sleeping...{RESET}")
         time.sleep(30)
 
