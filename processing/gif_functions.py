@@ -1,7 +1,7 @@
 import numpy as np
 import awkward as ak
 from glob import glob
-from lgdo import lh5
+import lh5
 import matplotlib
 
 matplotlib.use("Agg")
