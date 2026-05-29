@@ -1,7 +1,9 @@
 import random
 import numpy as np
 from glob import glob
-from remage import remage_run
+import tempfile
+import os
+import subprocess
 
 
 CYL_RADIUS = 600.0
@@ -190,16 +192,28 @@ def run_sim(muon_file, gdml_file, n_events, output_file):
         f"/RMG/Generator/MUSUNCosmicMuons/MUSUNFile {muon_file}",
         f"/run/beamOn {n_events}",
     ]
+    macro_path = None
 
     try:
-        # Run remage
-        remage_run(
-            macros=macro_lines,
-            gdml_files=gdml_file,
-            output=output_file,
-            overwrite_output=True,
-            flat_output=True,
-        )
+        # Create unique temporary macro file
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            suffix=".mac",
+            prefix="remage_",
+            delete=False,
+        ) as tmp:
+            tmp.write("\n".join(macro_lines))
+            tmp.write("\n")
+            macro_path = tmp.name
+
+        # Run remage using macro file
+        cmd = ["remage-cpp", macro_path, "-g", gdml_file, "-o", output_file, "-w"]
+        subprocess.run(cmd, check=True, capture_output=False, text=True)
+
     except Exception as e:
-        # Catch any error that remage_run might raise
-        print(f"❌ Simulation failed: {e}")  #
+        print(f"❌ Simulation failed: {e}")
+
+    finally:
+        # Cleanup temp file
+        if macro_path and os.path.exists(macro_path):
+            os.remove(macro_path)
