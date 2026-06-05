@@ -227,8 +227,13 @@ function playEvent(path) {
   player.oncanplay = async () => {
     log("Buffering event: " + eventName);
 
-    // wait until we have at least x seconds buffered
-    await waitForBuffer(player, 10);
+    await new Promise((resolve) => {
+      const check = () => {
+        if (player.readyState >= 4) return resolve();
+        requestAnimationFrame(check);
+      };
+      check();
+    });
 
     log("Playing event: " + eventName);
     updateStatus("PLAYING");
