@@ -9,6 +9,27 @@ import time
 from datetime import datetime
 import yaml
 from pathlib import Path
+import fcntl
+
+GLOBAL_METADATA_FILE = "out/global_metadata.yaml"
+
+
+def update_global_metadata(new_data):
+    with open(GLOBAL_METADATA_FILE, "r+") as f:
+        fcntl.flock(f, fcntl.LOCK_EX)
+
+        try:
+            metadata = yaml.safe_load(f) or {}
+
+            for key, value in new_data.items():
+                metadata[key] = metadata.get(key, 0) + value
+
+            f.seek(0)
+            f.truncate()
+            yaml.safe_dump(metadata, f, sort_keys=False)
+
+        finally:
+            fcntl.flock(f, fcntl.LOCK_UN)
 
 
 def run_gif(input_files_string, n_random_events, job_id=None):
@@ -52,25 +73,20 @@ def run_gif(input_files_string, n_random_events, job_id=None):
             read_files(outfile)
         )
 
-        # load or setup the global metadata file to update stats.
-        global_metadata_file = "out/global_metadata.yaml"
-        # --- load or initialize global metadata ---
-        if os.path.exists(global_metadata_file):
-            with open(global_metadata_file, "r") as f:
-                global_metadata = yaml.safe_load(f) or {}
-        else:
-            global_metadata = {
-                "events_simulated": 0,
-                "muons_sampled": 0,
-                "muons_vetoed": 0,
-                "dangerous_muons": 0,
-                "dangerous_muons_vetoed": 0,
-                "ge_77_vetoed": 0,
-                "ge_77_creating_muons": 0,
-                "ge_77_creating_muons_vetoed": 0,
-                "total_detected_neutrons": 0,
-                "total_captured_neutrons": 0,
-            }
+        # Setup the global metadata file to update stats.
+
+        global_metadata = {
+            "events_simulated": 0,
+            "muons_sampled": 0,
+            "muons_vetoed": 0,
+            "dangerous_muons": 0,
+            "dangerous_muons_vetoed": 0,
+            "ge_77_vetoed": 0,
+            "ge_77_creating_muons": 0,
+            "ge_77_creating_muons_vetoed": 0,
+            "total_detected_neutrons": 0,
+            "total_captured_neutrons": 0,
+        }
 
         generated_files = []
         for i in range(n_random_events):
@@ -145,8 +161,7 @@ def run_gif(input_files_string, n_random_events, job_id=None):
 
         # Updates outside of the loop, to avoid double counting.
         global_metadata["muons_sampled"] += int(sampled_muons)
-        with open(global_metadata_file, "w") as f:
-            yaml.dump(global_metadata, f, sort_keys=False)
+        update_global_metadata(global_metadata)
 
         os.remove(outfile)
     finally:
