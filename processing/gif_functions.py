@@ -1257,7 +1257,9 @@ def make_gif_full(frames, bins, max_ge_energy, gif_config):
                 # --- Roughly check if this muon would be vetoed ---
                 if not primary_muon_vetoed:
                     multiplicity = len(np.unique(pmt_uids_frame))
-                    if multiplicity > 30:
+                    if (multiplicity > 40) & (
+                        t1 < 300
+                    ):  # only veto the first 300ns, otherwise bins get too large.
                         primary_muon_vetoed = True
 
                 # --- Now also add the + neutron detected pop-up on the main plot ---
