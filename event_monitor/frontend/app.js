@@ -219,6 +219,7 @@ function playEvent(path) {
   updateEventPopup(eventName, "Loading metadata...");
 
   player.pause();
+  player.autoplay = false;
   player.removeAttribute("src");
   player.load();
   player.src = path + "?t=" + Date.now();
@@ -227,10 +228,11 @@ function playEvent(path) {
     log("Buffering event: " + eventName);
 
     // wait until we have at least x seconds buffered
-    await waitForBuffer(player, 60);
+    await waitForBuffer(player, 10);
 
     log("Playing event: " + eventName);
     updateStatus("PLAYING");
+
     player.play();
   };
 
