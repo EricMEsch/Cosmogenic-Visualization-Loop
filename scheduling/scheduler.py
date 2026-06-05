@@ -140,20 +140,20 @@ def cleanup():
                 )
 
         # remove folder if empty
-        try:
-            if root != OUT_DIR and not os.listdir(root):
-                os.rmdir(root)
-                publish_event(
-                    source="Scheduler",
-                    type_="info",
-                    message=f"Removed empty folder: {root}",
-                )
-        except Exception as e:
-            publish_event(
-                source="Scheduler",
-                type_="warning",
-                message=f"Could not remove folder {root}: {e}",
-            )
+        # try:
+        #    if root != OUT_DIR and not os.listdir(root):
+        #        os.rmdir(root)
+        #        publish_event(
+        #            source="Scheduler",
+        #            type_="info",
+        #            message=f"Removed empty folder: {root}",
+        #        )
+        # except Exception as e:
+        #    publish_event(
+        #        source="Scheduler",
+        #        type_="warning",
+        #        message=f"Could not remove folder {root}: {e}",
+        #    )
 
     publish_event(source="Scheduler", type_="info", message="Cleanup finished")
 
