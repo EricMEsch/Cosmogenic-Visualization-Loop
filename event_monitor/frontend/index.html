@@ -1,0 +1,96 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Live Event Monitor</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+
+<body>
+
+<div id="layout">
+
+  <!-- VIDEO AREA -->
+  <div id="video-panel">
+    <video id="player" autoplay muted></video>
+
+    <div id="overlay">
+      <div id="event-title">Waiting for event...</div>
+      <div id="event-meta"></div>
+    </div>
+  </div>
+
+  <!-- SIDE PANEL -->
+  <div id="sidebar">
+
+    <div id="summary-overlay">
+      <div id="summary-title">Start time of simulation: -</div>
+      <pre id="summary-content">
+    events_simulated: —
+    muons_sampled: —
+    muon_triggers: —
+    dangerous_muons: —
+    dangerous_muons_vetoed: —
+    ge_77_triggers: —
+    ge_77_creating_muons: —
+    ge_77_creating_muons_vetoed: —
+    total_detected_neutrons: —
+    total_captured_neutrons: —
+    simulated_time: —
+      </pre>
+      <div id="summary-sim-title">Current time in simulation: —</div>
+    </div>
+
+    <div class="block">
+      <div class="label">EVENT</div>
+      <div id="event-id">—</div>
+    </div>
+
+    <div class="block">
+      <div class="label">SYSTEM</div>
+      <div id="system">Initializing...</div>
+    </div>
+
+    <div class="block">
+      <div class="label">STATUS</div>
+      <pre id="status">—</pre>
+    </div>
+
+    <div class="block">
+      <div class="label">LOG</div>
+      <div id="log"></div>
+    </div>
+
+    <div class="block">
+      <div class="label">SCHEDULER</div>
+      <div id="scheduler">Idle</div>
+    </div>
+
+    <div class="block">
+      <div class="label">JEFF</div>
+      <div id="jeff">Idle</div>
+    </div>
+
+    <div class="block">
+      <div class="label">JEB</div>
+      <div id="jeb">Idle</div>
+    </div>
+
+    <div class="block">
+      <div class="label">JENNY</div>
+      <div id="jenny">Idle</div>
+    </div>
+
+    <div class="block">
+      <div class="label">CUROS</div>
+      <div id="curos">Idle</div>
+    </div>
+
+  </div>
+
+</div>
+
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<script src="/app.js"></script>
+</body>
+</html>

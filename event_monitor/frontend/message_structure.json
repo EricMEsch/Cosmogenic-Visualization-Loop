@@ -1,0 +1,7 @@
+{
+  "source": "scheduler | worker-3 | curator",
+  "type": "info | warning | error | playlist_update | task_update",
+  "timestamp": "...",
+  "message": "...",
+  "data": {}
+}

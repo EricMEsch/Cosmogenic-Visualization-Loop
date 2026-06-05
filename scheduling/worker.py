@@ -5,6 +5,8 @@ import sys
 import random
 
 sys.path.append(".")  # Because we run this from the parent folder.
+sys.path.append("event_monitor/frontend")
+from event_bus import publish_event
 from run import run_gif
 import fcntl
 
@@ -12,17 +14,25 @@ QUEUE_FILE = "out/queue.yaml"
 PLAYLIST_FILE = "out/playlist.yaml"
 LOCK_FILE = "out/worker_pause.flag"
 
+worker_names = ["Jeff", "Jeb", "Jenny"]
+
 
 def append_playlist(file):
-    playlist = []
-    if os.path.exists(PLAYLIST_FILE):
-        with open(PLAYLIST_FILE, "r") as f:
+    with open(PLAYLIST_FILE, "a+") as f:
+        fcntl.flock(f, fcntl.LOCK_EX)
+
+        try:
+            f.seek(0)
             playlist = yaml.safe_load(f) or []
 
-    playlist.append(file)
+            playlist.append(file)
 
-    with open(PLAYLIST_FILE, "w") as f:
-        yaml.dump(playlist, f)
+            f.seek(0)
+            f.truncate()
+            yaml.safe_dump(playlist, f)
+
+        finally:
+            fcntl.flock(f, fcntl.LOCK_UN)
 
 
 def is_paused():
@@ -77,7 +87,6 @@ def remove_job(job_id):
 
 def run_worker(worker_id):
     worker_id = int(worker_id)
-    worker_names = ["Jeff", "Jeb", "Jenny"]
     worker_name = worker_names[worker_id % len(worker_names)]
     worker_idle_messages = [
         f"{worker_name} is taking a coffee break ☕",
@@ -102,14 +111,11 @@ def run_worker(worker_id):
         f"[{worker_name}]: Would it be against company policy if i ask {worker_names[(worker_id + 2) % len(worker_names)]} out on a date?",
     ]
 
-    BLUE = "\033[34m"
-    RESET = "\033[0m"
-    RED = "\033[31m"
-    print(f"{BLUE}[{worker_name}] started{RESET}")
+    publish_event(source=worker_name, type_="info", message="starting...")
 
     while True:
         if is_paused():
-            print(f"{BLUE}[{worker_name}] paused...{RESET}")
+            publish_event(source=worker_name, type_="info", message="paused...")
             time.sleep(20)
             continue
 
@@ -117,25 +123,32 @@ def run_worker(worker_id):
 
         if job is None:
             line = random.choice(worker_idle_messages)
-            print(f"{BLUE}{line}{RESET}")
+            publish_event(source=worker_name, type_="info", message=line)
             time.sleep(60)
             continue
 
         job_id = job["job_id"]
         try:
-            print(f"{BLUE}[{worker_name}] running job {job_id}{RESET}")
+            publish_event(
+                source=worker_name, type_="info", message=f"running job {job_id}..."
+            )
 
             # run simulation
             files = run_gif("musun/part_*.dat", 1, worker_id)
             result_file = files[0]
 
-            print(f"{BLUE}[{worker_name}] finished job {job_id}: {result_file}{RESET}")
+            publish_event(
+                source=worker_name,
+                type_="info",
+                message=f"finished job {job_id}: {result_file}",
+            )
 
             append_playlist(result_file)
             remove_job(job_id)
         except Exception as e:
-            print(f"{RED}[{worker_name}] error in job {job_id}.{RESET}")
-            print(f"error details: {e}")
+            publish_event(
+                source=worker_name, type_="error", message=f"error in job {job_id}: {e}"
+            )
             # mark job as pending again for retry
             with open(QUEUE_FILE, "r+") as f:
                 fcntl.flock(f, fcntl.LOCK_EX)
@@ -155,7 +168,11 @@ def run_worker(worker_id):
                 finally:
                     fcntl.flock(f, fcntl.LOCK_UN)
 
-            print(f"{RED}[{worker_name}] Waiting for daddy to fix me...{RESET}")
+            publish_event(
+                source=worker_name,
+                type_="error",
+                message="Waiting for daddy to fix me...",
+            )
             while True:
                 time.sleep(3600)
 
