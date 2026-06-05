@@ -757,6 +757,8 @@ def make_gif_full(frames, bins, max_ge_energy, gif_config):
     # Create one figure for everyone to live on in harmony
     fig = plt.figure(figsize=(10, 10), dpi=201.6)
 
+    fig.subplots_adjust(left=0.05, right=0.99, bottom=0.03, top=0.97)
+
     # Calculate aspect ratio
     dr = rlim[1] - rlim[0]
     dz = zlim[1] - zlim[0]
