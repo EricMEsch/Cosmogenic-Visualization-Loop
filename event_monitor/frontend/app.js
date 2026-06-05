@@ -134,6 +134,26 @@ function updateGlobalMetadata(globalMetadata) {
   summarySimTitle.textContent = `Current time in simulation:\n${endTimeText ?? "-"}`;
 }
 
+function waitForBuffer(video, targetSeconds = 3) {
+  return new Promise((resolve) => {
+    const check = () => {
+      if (video.buffered.length > 0) {
+        const bufferedEnd = video.buffered.end(video.buffered.length - 1);
+        const current = video.currentTime;
+
+        if (bufferedEnd - current >= targetSeconds) {
+          resolve();
+          return;
+        }
+      }
+
+      requestAnimationFrame(check);
+    };
+
+    check();
+  });
+}
+
 function handleEvent(msg) {
   switch (msg.source) {
     case "Scheduler":
@@ -198,9 +218,17 @@ function playEvent(path) {
 
   updateEventPopup(eventName, "Loading metadata...");
 
+  player.pause();
+  player.removeAttribute("src");
+  player.load();
   player.src = path + "?t=" + Date.now();
 
-  player.onloadeddata = () => {
+  player.oncanplay = async () => {
+    log("Buffering event: " + eventName);
+
+    // wait until we have at least x seconds buffered
+    await waitForBuffer(player, 10);
+
     log("Playing event: " + eventName);
     updateStatus("PLAYING");
     player.play();
