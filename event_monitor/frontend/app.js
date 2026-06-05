@@ -227,7 +227,7 @@ function playEvent(path) {
     log("Buffering event: " + eventName);
 
     // wait until we have at least x seconds buffered
-    await waitForBuffer(player, 10);
+    await waitForBuffer(player, 60);
 
     log("Playing event: " + eventName);
     updateStatus("PLAYING");
