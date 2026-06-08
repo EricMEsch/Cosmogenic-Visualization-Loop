@@ -1437,215 +1437,240 @@ def make_gif_full(frames, bins, max_ge_energy, gif_config):
         format="FFMPEG",
         ffmpeg_params=["-preset", "ultrafast"],
     )
+
+    # --- Find last frame after which nothing happens ---
+    # This can be optimized even more.
+    track_birth = xz_tracks["birth_frame"]
+    track_max = (
+        np.max(track_birth)
+        if len(track_birth) > 0
+        else 0 + int(linger / n_scint_fadeout_mult) + 1
+    )
+    pmt_max = (
+        np.max(pmt_birth_frames)
+        if len(pmt_birth_frames) > 0
+        else 0 + int(linger / pmt_fadeout_mult) + 1
+    )
+    scintillator_max = (
+        np.max(xz_scintillator_neutrons["birth_frame"])
+        if len(xz_scintillator_neutrons["birth_frame"]) > 0
+        else 0 + int(linger / n_scint_fadeout_mult) + 1
+    )
+    last_frame_index = (
+        max(track_max, pmt_max, scintillator_max) + 30
+    )  # add some buffer due to the neutron popups to be safe
+
     # --- generate the frames ---
     for f in tqdm(range(n_frames), desc="Rendering frames"):
         t1 = bins[f + 1]
+        if f < last_frame_index:
+            # --- update tracks ---
+            age = np.asarray(tracks_fadeout_mult * (f - xz_tracks["birth_frame"]))
+            mask = (age >= 0) & (age < linger)
+            ge77_mask_frame = ge77_mask & (age >= 0)
+            x_frame = np.asarray(xz_tracks[field_name][mask])
+            z_frame = np.asarray(xz_tracks["z"][mask])
+            x_ge77_frame = np.asarray(xz_tracks[field_name][ge77_mask_frame])
+            z_ge77_frame = np.asarray(xz_tracks["z"][ge77_mask_frame])
 
-        # --- update tracks ---
-        age = np.asarray(tracks_fadeout_mult * (f - xz_tracks["birth_frame"]))
-        mask = (age >= 0) & (age < linger)
-        ge77_mask_frame = ge77_mask & (age >= 0)
-        x_frame = np.asarray(xz_tracks[field_name][mask])
-        z_frame = np.asarray(xz_tracks["z"][mask])
-        x_ge77_frame = np.asarray(xz_tracks[field_name][ge77_mask_frame])
-        z_ge77_frame = np.asarray(xz_tracks["z"][ge77_mask_frame])
+            alpha_frame = 1.0 - age[mask] / linger
 
-        alpha_frame = 1.0 - age[mask] / linger
+            x_last = x_frame[-1] if len(x_frame) > 0 else x_last
+            z_last = z_frame[-1] if len(z_frame) > 0 else z_last
 
-        x_last = x_frame[-1] if len(x_frame) > 0 else x_last
-        z_last = z_frame[-1] if len(z_frame) > 0 else z_last
-
-        # --- update track scatter ---
-        track_scatter.set_offsets(np.column_stack([x_frame, z_frame]))
-        track_scatter.set_alpha(None)
-        track_scatter.set_facecolors(
-            np.column_stack(
-                [
-                    np.zeros_like(alpha_frame),
-                    np.zeros_like(alpha_frame),
-                    np.ones_like(alpha_frame),
-                    alpha_frame,
-                ]
-            )
-        )
-
-        # Stats update
-        neutrons_mask_current_frame = neutron_mask & (age == 0)
-        captured_neutrons += np.sum(neutrons_mask_current_frame)
-        ge_77_captures += np.sum(ge77_mask_frame & (age == 0))
-
-        # --- highlight germanium track permanently if requested ---
-        if hightlight_ge77 and len(x_ge77_frame) > 0:
-            ge77_scatter.set_offsets(np.column_stack([x_ge77_frame, z_ge77_frame]))
-            ge77_scatter.set_alpha(1.0)  # Always fully opaque
-            ge77_scatter.set_facecolors("darkred")
-
-        # --- draw scintillator tracks if requested ---
-        if add_scintillator:
-            age_neutrons = np.asarray(
-                n_scint_fadeout_mult * (f - xz_scintillator_neutrons["birth_frame"])
-            )
-            age_muons = np.asarray(f - xz_scintillator_muons["birth_frame"])
-
-            mask_neutrons = (age_neutrons >= 0) & (age_neutrons < linger)
-            mask_muons = age_muons >= 0  # Never fade out muons.
-            mask_current_muons = age_muons == 0  # But highlight current muon position
-
-            x_scint_neutrons_frame = np.asarray(
-                xz_scintillator_neutrons[field_name][mask_neutrons]
-            )
-            z_scint_neutrons_frame = np.asarray(
-                xz_scintillator_neutrons["z"][mask_neutrons]
-            )
-            alpha_scint_neutrons_frame = 1.0 - age_neutrons[mask_neutrons] / linger
-
-            x_scint_muons_frame = np.asarray(
-                xz_scintillator_muons[field_name][mask_muons]
-            )
-            z_scint_muons_frame = np.asarray(xz_scintillator_muons["z"][mask_muons])
-            x_scint_current_muon_frame = np.asarray(
-                xz_scintillator_muons[field_name][mask_current_muons]
-            )
-            z_scint_current_muon_frame = np.asarray(
-                xz_scintillator_muons["z"][mask_current_muons]
-            )
-
-            # --- update neutron scatter ---
-            scintillator_neutron_scatter.set_offsets(
-                np.column_stack([x_scint_neutrons_frame, z_scint_neutrons_frame])
-            )
-            scintillator_neutron_scatter.set_alpha(None)
-            scintillator_neutron_scatter.set_facecolors(
+            # --- update track scatter ---
+            track_scatter.set_offsets(np.column_stack([x_frame, z_frame]))
+            track_scatter.set_alpha(None)
+            track_scatter.set_facecolors(
                 np.column_stack(
                     [
-                        np.zeros_like(alpha_scint_neutrons_frame),
-                        np.ones_like(alpha_scint_neutrons_frame),
-                        np.ones_like(alpha_scint_neutrons_frame),
-                        alpha_scint_neutrons_frame,
+                        np.zeros_like(alpha_frame),
+                        np.zeros_like(alpha_frame),
+                        np.ones_like(alpha_frame),
+                        alpha_frame,
                     ]
                 )
             )
 
-            # --- update muon scatter ---
-            scintillator_muon_scatter.set_offsets(
-                np.column_stack([x_scint_muons_frame, z_scint_muons_frame])
-            )
-            scintillator_muon_scatter.set_alpha(None)
-            scintillator_muon_scatter.set_facecolors("green")
+            # Stats update
+            neutrons_mask_current_frame = neutron_mask & (age == 0)
+            captured_neutrons += np.sum(neutrons_mask_current_frame)
+            ge_77_captures += np.sum(ge77_mask_frame & (age == 0))
 
-            # --- update highlighted current muon scatter ---
-            scintillator_current_muon_scatter.set_offsets(
-                np.column_stack(
-                    [x_scint_current_muon_frame, z_scint_current_muon_frame]
+            # --- highlight germanium track permanently if requested ---
+            if hightlight_ge77 and len(x_ge77_frame) > 0:
+                ge77_scatter.set_offsets(np.column_stack([x_ge77_frame, z_ge77_frame]))
+                ge77_scatter.set_alpha(1.0)  # Always fully opaque
+                ge77_scatter.set_facecolors("darkred")
+
+            # --- draw scintillator tracks if requested ---
+            if add_scintillator:
+                age_neutrons = np.asarray(
+                    n_scint_fadeout_mult * (f - xz_scintillator_neutrons["birth_frame"])
                 )
-            )
-            scintillator_current_muon_scatter.set_alpha(None)
-            scintillator_current_muon_scatter.set_facecolors("red")
+                age_muons = np.asarray(f - xz_scintillator_muons["birth_frame"])
 
-        # --- draw PMTs if requested ---
-        if add_pmts:
-            pmt_row_colors[:] = (*dots_colors[6], 1.0)  # default
+                mask_neutrons = (age_neutrons >= 0) & (age_neutrons < linger)
+                mask_muons = age_muons >= 0  # Never fade out muons.
+                mask_current_muons = (
+                    age_muons == 0
+                )  # But highlight current muon position
 
-            age_pmts = np.asarray(pmt_fadeout_mult * (f - pmt_birth_frames))
-            mask_pmts = (age_pmts >= 0) & (age_pmts < linger)
-
-            if np.any(mask_pmts):
-                pmt_uids_frame = pmt_uids[mask_pmts]
-                pmt_row_uids_frame = pmt_row_uids[mask_pmts]
-                alpha_pmts_frame = 1.0 - age_pmts[mask_pmts] / linger
-
-                # The alpha here is not a real alpha but a transition between color (hit) and color (no hit)
-                rgba = np.column_stack(
-                    [
-                        alpha_pmts_frame * dots_colors[5][0]
-                        + (1 - alpha_pmts_frame) * dots_colors[6][0],
-                        alpha_pmts_frame * dots_colors[5][1]
-                        + (1 - alpha_pmts_frame) * dots_colors[6][1],
-                        alpha_pmts_frame * dots_colors[5][2]
-                        + (1 - alpha_pmts_frame) * dots_colors[6][2],
-                        np.ones_like(alpha_pmts_frame),
-                    ]
+                x_scint_neutrons_frame = np.asarray(
+                    xz_scintillator_neutrons[field_name][mask_neutrons]
                 )
-                # because the uids are already sorted by birth_frame this already implicitly has a "newest hit wins" behaviour.
-                pmt_row_colors[pmt_row_uids_frame] = rgba
+                z_scint_neutrons_frame = np.asarray(
+                    xz_scintillator_neutrons["z"][mask_neutrons]
+                )
+                alpha_scint_neutrons_frame = 1.0 - age_neutrons[mask_neutrons] / linger
 
-                pmt_collection.set_facecolors(pmt_row_colors)
+                x_scint_muons_frame = np.asarray(
+                    xz_scintillator_muons[field_name][mask_muons]
+                )
+                z_scint_muons_frame = np.asarray(xz_scintillator_muons["z"][mask_muons])
+                x_scint_current_muon_frame = np.asarray(
+                    xz_scintillator_muons[field_name][mask_current_muons]
+                )
+                z_scint_current_muon_frame = np.asarray(
+                    xz_scintillator_muons["z"][mask_current_muons]
+                )
 
-                # --- update wall and floor scatter ---
-                pmt_all_colors[:] = (*dots_colors[6], 1.0)
+                # --- update neutron scatter ---
+                scintillator_neutron_scatter.set_offsets(
+                    np.column_stack([x_scint_neutrons_frame, z_scint_neutrons_frame])
+                )
+                scintillator_neutron_scatter.set_alpha(None)
+                scintillator_neutron_scatter.set_facecolors(
+                    np.column_stack(
+                        [
+                            np.zeros_like(alpha_scint_neutrons_frame),
+                            np.ones_like(alpha_scint_neutrons_frame),
+                            np.ones_like(alpha_scint_neutrons_frame),
+                            alpha_scint_neutrons_frame,
+                        ]
+                    )
+                )
 
-                # Test display to see PMT alignment
-                # test_indices= []
-                # for arr in uids_rows:
-                #    try:
-                #        progress = f % 50
-                #
-                #        test_indices.append(arr[int(progress / (50 / len(arr)))])
-                #    except IndexError:
-                #        pass
-                # pmt_all_colors[test_indices] = (1.0, 0.0, 0.0, 1.0)
-                # End of test stuff
+                # --- update muon scatter ---
+                scintillator_muon_scatter.set_offsets(
+                    np.column_stack([x_scint_muons_frame, z_scint_muons_frame])
+                )
+                scintillator_muon_scatter.set_alpha(None)
+                scintillator_muon_scatter.set_facecolors("green")
 
-                pmt_all_colors[pmt_uids_frame] = rgba
+                # --- update highlighted current muon scatter ---
+                scintillator_current_muon_scatter.set_offsets(
+                    np.column_stack(
+                        [x_scint_current_muon_frame, z_scint_current_muon_frame]
+                    )
+                )
+                scintillator_current_muon_scatter.set_alpha(None)
+                scintillator_current_muon_scatter.set_facecolors("red")
 
-                floor_scatter.set_facecolors(pmt_all_colors[:n_floor_pmts])
-                wall_scatter.set_facecolors(pmt_all_colors[n_floor_pmts:])
+            # --- draw PMTs if requested ---
+            if add_pmts:
+                pmt_row_colors[:] = (*dots_colors[6], 1.0)  # default
 
-                # --- Roughly check if this muon would be vetoed ---
-                if not primary_muon_vetoed:
-                    multiplicity = len(np.unique(pmt_uids_frame))
-                    if (multiplicity > 40) & (
-                        t1 < 300
-                    ):  # only veto the first 300ns, otherwise bins get too large.
-                        primary_muon_vetoed = True
+                age_pmts = np.asarray(pmt_fadeout_mult * (f - pmt_birth_frames))
+                mask_pmts = (age_pmts >= 0) & (age_pmts < linger)
 
-                # --- Now also add the + neutron detected pop-up on the main plot ---
-                if (
-                    neutron_popups and t1 > 1000
-                ):  # Only start counting neutrons after 1 microsecond
-                    mask_current_pmts = (
-                        age_pmts == 0
-                    )  # Only PMTs that are hit in the current frame
-                    pmt_uids_current_frame = np.unique(pmt_uids[mask_current_pmts])
-                    if len(pmt_uids_current_frame) > 5:
-                        detected_neutrons += 1
-                        # find free slot
-                        for i in range(MAX_POPUPS):
-                            if (
-                                popup_state[i]["age"] > 30
-                                or not popup_state[i]["active"]
-                            ):
-                                popup_state[i] = {
-                                    "age": 0,
-                                    "active": True,
-                                    "x": x_last,
-                                    "z": z_last,
-                                }
-                                active_popup_indices.append(i)
-                                break
+                if np.any(mask_pmts):
+                    pmt_uids_frame = pmt_uids[mask_pmts]
+                    pmt_row_uids_frame = pmt_row_uids[mask_pmts]
+                    alpha_pmts_frame = 1.0 - age_pmts[mask_pmts] / linger
 
-            # --- Age it and make it fade-out ---
-            if neutron_popups:
-                T = 30
+                    # The alpha here is not a real alpha but a transition between color (hit) and color (no hit)
+                    rgba = np.column_stack(
+                        [
+                            alpha_pmts_frame * dots_colors[5][0]
+                            + (1 - alpha_pmts_frame) * dots_colors[6][0],
+                            alpha_pmts_frame * dots_colors[5][1]
+                            + (1 - alpha_pmts_frame) * dots_colors[6][1],
+                            alpha_pmts_frame * dots_colors[5][2]
+                            + (1 - alpha_pmts_frame) * dots_colors[6][2],
+                            np.ones_like(alpha_pmts_frame),
+                        ]
+                    )
+                    # because the uids are already sorted by birth_frame this already implicitly has a "newest hit wins" behaviour.
+                    pmt_row_colors[pmt_row_uids_frame] = rgba
 
-                for i in active_popup_indices[
-                    :
-                ]:  # iterate copy so we can remove safely
-                    state = popup_state[i]
-                    txt = popup_texts[i]
+                    pmt_collection.set_facecolors(pmt_row_colors)
 
-                    age = state["age"]
+                    # --- update wall and floor scatter ---
+                    pmt_all_colors[:] = (*dots_colors[6], 1.0)
 
-                    if age > T:
-                        state["active"] = False
-                        txt.set_alpha(0.0)
-                        active_popup_indices.remove(i)
-                        continue
+                    # Test display to see PMT alignment
+                    # test_indices= []
+                    # for arr in uids_rows:
+                    #    try:
+                    #        progress = f % 50
+                    #
+                    #        test_indices.append(arr[int(progress / (50 / len(arr)))])
+                    #    except IndexError:
+                    #        pass
+                    # pmt_all_colors[test_indices] = (1.0, 0.0, 0.0, 1.0)
+                    # End of test stuff
 
-                    txt.set_position((state["x"], state["z"] + 0.01 * age))
-                    txt.set_alpha(1.0 - age / T)
+                    pmt_all_colors[pmt_uids_frame] = rgba
 
-                    state["age"] += 1
+                    floor_scatter.set_facecolors(pmt_all_colors[:n_floor_pmts])
+                    wall_scatter.set_facecolors(pmt_all_colors[n_floor_pmts:])
+
+                    # --- Roughly check if this muon would be vetoed ---
+                    if not primary_muon_vetoed:
+                        multiplicity = len(np.unique(pmt_uids_frame))
+                        if (multiplicity > 40) & (
+                            t1 < 300
+                        ):  # only veto the first 300ns, otherwise bins get too large.
+                            primary_muon_vetoed = True
+
+                    # --- Now also add the + neutron detected pop-up on the main plot ---
+                    if (
+                        neutron_popups and t1 > 1000
+                    ):  # Only start counting neutrons after 1 microsecond
+                        mask_current_pmts = (
+                            age_pmts == 0
+                        )  # Only PMTs that are hit in the current frame
+                        pmt_uids_current_frame = np.unique(pmt_uids[mask_current_pmts])
+                        if len(pmt_uids_current_frame) > 5:
+                            detected_neutrons += 1
+                            # find free slot
+                            for i in range(MAX_POPUPS):
+                                if (
+                                    popup_state[i]["age"] > 30
+                                    or not popup_state[i]["active"]
+                                ):
+                                    popup_state[i] = {
+                                        "age": 0,
+                                        "active": True,
+                                        "x": x_last,
+                                        "z": z_last,
+                                    }
+                                    active_popup_indices.append(i)
+                                    break
+
+                # --- Age it and make it fade-out ---
+                if neutron_popups:
+                    T = 30
+
+                    for i in active_popup_indices[
+                        :
+                    ]:  # iterate copy so we can remove safely
+                        state = popup_state[i]
+                        txt = popup_texts[i]
+
+                        age = state["age"]
+
+                        if age > T:
+                            state["active"] = False
+                            txt.set_alpha(0.0)
+                            active_popup_indices.remove(i)
+                            continue
+
+                        txt.set_position((state["x"], state["z"] + 0.01 * age))
+                        txt.set_alpha(1.0 - age / T)
+
+                        state["age"] += 1
 
         # --- time label ---
         title.set_text(f"t = {t1:.2f} ns" if t1 < 1000 else f"t = {t1 / 1000:.2f} us")
