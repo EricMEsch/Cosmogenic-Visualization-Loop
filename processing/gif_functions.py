@@ -887,13 +887,9 @@ row_z = (
 row_phi = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 90.0, 90.0, 90.0, 90.0, 90.0, 90.0])
 
 
-def make_gif_full(frames, bins, max_ge_energy, gif_config):
-    # --- Unpack config options with defaults ---
+def _unpack_gif_config(gif_config, max_ge_energy):
     filename = gif_config.get("filename", "out.gif")
     fps = gif_config.get("fps", 20)
-    xlim = gif_config.get(
-        "xlim", (-np.max(r_water_tank) - 0.1, np.max(r_water_tank) + 0.1)
-    )
     zlim = gif_config.get("zlim", (np.min(z_water_tank), np.max(z_water_tank) + 0.1))
     linger = gif_config.get("linger", 0)
     hightlight_ge77 = gif_config.get("hightlight_ge77", False)
@@ -901,31 +897,26 @@ def make_gif_full(frames, bins, max_ge_energy, gif_config):
     add_pmts = gif_config.get("add_pmts", False)
     neutron_popups = gif_config.get("neutron_popups", False)
     add_info_text = gif_config.get("add_info_text", False)
+
     dots_colors = gif_config.get("colors", None)
     colors_strings = gif_config.get("colors_strings", None)
-    # can adjust this to have tracks fade out faster or slower
+
     tracks_fadeout_mult = gif_config.get("tracks_fadeout_mult", 1.0)
-    # have neutrons in scintillator fade out
     n_scint_fadeout_mult = gif_config.get("n_scint_fadeout_mult", 2.0)
-    # have PMTs fade out faster. This does affect the primary muon veto response (which triggers if there is a multiplicity of 30 lingering PMTs)
     pmt_fadeout_mult = gif_config.get("pmt_fadeout_mult", 2.0)
-    dangerous_ge_threshold = gif_config.get(
-        "dangerous_ge_threshold", 25
-    )  # keV. If GE energy dep is above this, it's colored red and gets a warning popup.
-    ge77_veto_threshold = gif_config.get(
-        "ge77_veto_threshold", 6
-    )  # if more than this neutrons have been detected count it as ge77 vetoed
-    show_x = gif_config.get(
-        "show_x", True
-    )  # show x on x-axis (else it shows r-projection).
-    if show_x:
-        field_name = "x"
-    else:
-        field_name = "r"
+
+    dangerous_ge_threshold = gif_config.get("dangerous_ge_threshold", 25)
+    ge77_veto_threshold = gif_config.get("ge77_veto_threshold", 6)
+
+    show_x = gif_config.get("show_x", True)
+    field_name = "x" if show_x else "r"
+    xlim = gif_config.get(
+        "xlim",
+        ((-np.max(r_water_tank) - 0.1) if show_x else 0, np.max(r_water_tank) + 0.1),
+    )
 
     dangerous_muon = max_ge_energy > dangerous_ge_threshold
 
-    # --- Set up colors ---
     if dots_colors is None:
         dots_colors = (
             "blue",
@@ -939,13 +930,30 @@ def make_gif_full(frames, bins, max_ge_energy, gif_config):
     if colors_strings is None:
         colors_strings = ("Blue:", "Darkred:", "Cyan:", "Green:", "Red:", "Yellow:", "")
 
-    # Number of frames to generate
-    n_frames = len(bins) - 1
+    return (
+        filename,
+        fps,
+        xlim,
+        zlim,
+        linger,
+        hightlight_ge77,
+        add_scintillator,
+        add_pmts,
+        neutron_popups,
+        add_info_text,
+        dots_colors,
+        colors_strings,
+        tracks_fadeout_mult,
+        n_scint_fadeout_mult,
+        pmt_fadeout_mult,
+        ge77_veto_threshold,
+        show_x,
+        field_name,
+        dangerous_muon,
+    )
 
-    # --- Prepare figure and axes ---
-    # Create one figure for everyone to live on in harmony
-    fig = plt.figure(figsize=(10, 10), dpi=100.8)  # so 1008 x 1008 pixels.
 
+def _setup_figure_and_axes(fig, xlim, zlim):
     fig.subplots_adjust(left=0.05, right=0.99, bottom=0.03, top=0.97)
 
     # Calculate aspect ratio
@@ -996,9 +1004,6 @@ def make_gif_full(frames, bins, max_ge_energy, gif_config):
         ax_main.set_ylim(*zlim)
     ax_main.set_xlabel("x")
     ax_main.set_ylabel("z")
-
-    title = ax_main.set_title("")
-
     # Set the wall axis ticks myself
     ax_wall.set_xlim(0, 365)
     ax_wall.set_xticks([0, 90, 180, 270, 360])
@@ -1035,7 +1040,10 @@ def make_gif_full(frames, bins, max_ge_energy, gif_config):
     ax_floor.set_xlim(-1.2, 1.2)
     ax_floor.set_ylim(-1.2, 1.2)
 
-    # --- setup static geometry ---
+    return fig, ax_main, ax_wall, ax_floor, ax_info
+
+
+def _setup_static_geometry(ax_main, show_x):
     static_lines = [
         (r_water_tank, z_water_tank),
         (r_o_cryo, z_o_cryo),
@@ -1045,20 +1053,82 @@ def make_gif_full(frames, bins, max_ge_energy, gif_config):
         (r_skirt, z_skirt),
         (r_tyvek, z_tyvek),
     ]
-    # --- draw static geometry ---
+
     for r_line, z_line in static_lines:
-        ax_main.plot(
-            r_line, z_line, color="gray", zorder=-10
-        )  # -10 to be behind everything
+        ax_main.plot(r_line, z_line, color="gray", zorder=-10)
         if show_x:
             ax_main.plot(-r_line, z_line, color="gray", zorder=-10)
 
-    # --- setup tracks ---
+
+def _setup_floor_rollout_geometry(ax_floor, uids_rows, dots_colors):
+    # --- Create floor rollout geometry ---
+    floor_x = []
+    floor_y = []
+
+    floor_radii = [1.0, 0.75, 0.5, 0.25, 0.0]
+
+    for radius, uids in zip(floor_radii, uids_rows[:5]):
+        n = len(uids)
+
+        if n == 1:
+            theta = np.array([0.0])
+        else:
+            theta = np.linspace(0, 2 * np.pi, n, endpoint=False)
+
+        # Mirror the angle because PMTs are distributed counter-clockwise
+        x = -radius * np.sin(theta)
+        y = radius * np.cos(theta)
+
+        floor_x.append(x)
+        floor_y.append(y)
+
+    floor_x = np.concatenate(floor_x)
+    floor_y = np.concatenate(floor_y)
+
+    floor_colors = np.zeros((len(floor_x), 4))
+    floor_colors[:] = (*dots_colors[6], 1.0)
+
+    floor_scatter = ax_floor.scatter(
+        floor_x, floor_y, s=120, facecolors=floor_colors, edgecolors="black"
+    )
+    return floor_scatter, floor_colors
+
+
+def _setup_wall_rollout_geometry(ax_wall, uids_rows, dots_colors):
+    # --- Create wall rollout geometry ---
+    wall_x = []
+    wall_y = []
+
+    for i, (uids, z_loc) in enumerate(zip(uids_rows[5:], row_z[5:])):  # wall rows only
+        n = len(uids)
+        # Mirror the angle also here
+        x = (
+            360 - np.linspace(0, 360, n, endpoint=False) - 1
+        )  # -1 to center the PMT a little better
+
+        y = np.full(n, z_loc)
+
+        wall_x.append(x)
+        wall_y.append(y)
+
+    wall_x = np.concatenate(wall_x)
+    wall_y = np.concatenate(wall_y)
+
+    wall_colors = np.zeros((len(wall_x), 4))
+    wall_colors[:] = (*dots_colors[6], 1.0)
+
+    wall_scatter = ax_wall.scatter(
+        wall_x, wall_y, s=120, facecolors=wall_colors, edgecolors="black"
+    )
+
+    return wall_scatter, wall_colors
+
+
+def _setup_tracks(ax_main, frames, dots_colors, hightlight_ge77):
     xz_tracks = frames["tracks"]
     ge77_mask = np.asarray((xz_tracks["particle"] // 10) == 100032077)
-    neutron_mask = np.asarray((xz_tracks["particle"] >= 1000000000))  # isotopes
+    neutron_mask = np.asarray((xz_tracks["particle"] >= 1000000000))
 
-    # --- Create the scatter objects once and update their data in each frame ---
     track_scatter = ax_main.scatter(
         [], [], s=15, color=dots_colors[0], zorder=20, edgecolors="none"
     )  # 20 to be in front of almost everything
@@ -1067,31 +1137,48 @@ def make_gif_full(frames, bins, max_ge_energy, gif_config):
             [], [], s=10, color=dots_colors[1], zorder=0
         )  # 0 to be behind the regular tracks
 
-    # --- setup scintillator tracks if requested ---
-    if add_scintillator:
-        xz_scintillator = frames["scintillator"]
-        xz_scintillator_neutrons = xz_scintillator[
-            (xz_scintillator["particle"] == 2112)
-            | (xz_scintillator["particle"] == -2112)
-        ]
-        xz_scintillator_muons = xz_scintillator[
-            (xz_scintillator["particle"] == 13) | (xz_scintillator["particle"] == -13)
-        ]
-        # Also create the scatter objects
-        scintillator_neutron_scatter = ax_main.scatter(
-            [], [], s=4, color=dots_colors[2], zorder=1, edgecolors="none"
-        )  # 1 to be in front of the static geometry but behind the regular tracks
-        scintillator_muon_scatter = ax_main.scatter(
-            [], [], s=5, color=dots_colors[3], zorder=2
-        )
-        scintillator_current_muon_scatter = ax_main.scatter(
-            [], [], s=5, color=dots_colors[4], zorder=21
-        )  # 21 to be in front of everything
+    return (
+        xz_tracks,
+        track_scatter,
+        ge77_scatter if hightlight_ge77 else None,
+        ge77_mask,
+        neutron_mask,
+    )
 
-    # --- setup PMTs ---
+
+def _setup_scintillator_tracks(ax_main, frames, dots_colors):
+    xz_scintillator = frames["scintillator"]
+    xz_scintillator_neutrons = xz_scintillator[
+        (xz_scintillator["particle"] == 2112) | (xz_scintillator["particle"] == -2112)
+    ]
+    xz_scintillator_muons = xz_scintillator[
+        (xz_scintillator["particle"] == 13) | (xz_scintillator["particle"] == -13)
+    ]
+
+    scintillator_neutron_scatter = ax_main.scatter(
+        [], [], s=4, color=dots_colors[2], zorder=1, edgecolors="none"
+    )  # 1 to be in front of the static geometry but behind the regular tracks
+    scintillator_muon_scatter = ax_main.scatter(
+        [], [], s=5, color=dots_colors[3], zorder=2
+    )
+    scintillator_current_muon_scatter = ax_main.scatter(
+        [], [], s=5, color=dots_colors[4], zorder=21
+    )  # 21 to be in front of everything
+
+    return (
+        scintillator_neutron_scatter,
+        scintillator_muon_scatter,
+        scintillator_current_muon_scatter,
+        xz_scintillator_neutrons,
+        xz_scintillator_muons,
+    )
+
+
+def _setup_pmts(ax_main, frames, dots_colors):
     optical = frames["optical"]
     pmt_birth_frames = optical["birth_frame"]
     pmt_uids = optical["det_uid"]
+
     # Create the PMT polygons just once and only update color later.
     pmt_polys = []
     # Convert the PMT uids, which go from 0 to 313 for each PMT into row indices going from 0 to len(uids_rows) - 1
@@ -1126,71 +1213,12 @@ def make_gif_full(frames, bins, max_ge_energy, gif_config):
     )
     ax_main.add_collection(pmt_collection)
 
-    # --- Create floor rollout geometry ---
-    floor_x = []
-    floor_y = []
-    uid_order = []
+    return pmt_birth_frames, pmt_uids, pmt_collection, pmt_row_colors, pmt_row_uids
 
-    floor_radii = [1.0, 0.75, 0.5, 0.25, 0.0]
 
-    for radius, uids in zip(floor_radii, uids_rows[:5]):
-        n = len(uids)
-
-        if n == 1:
-            theta = np.array([0.0])
-        else:
-            theta = np.linspace(0, 2 * np.pi, n, endpoint=False)
-
-        # Mirror the angle because PMTs are distributed counter-clockwise
-        x = -radius * np.sin(theta)
-        y = radius * np.cos(theta)
-
-        floor_x.append(x)
-        floor_y.append(y)
-
-        # store UID order
-        uid_order.extend(uids)
-
-    floor_x = np.concatenate(floor_x)
-    floor_y = np.concatenate(floor_y)
-
-    floor_colors = np.zeros((len(floor_x), 4))
-    floor_colors[:] = (*dots_colors[6], 1.0)
-
-    floor_scatter = ax_floor.scatter(
-        floor_x, floor_y, s=120, facecolors=floor_colors, edgecolors="black"
-    )
-
-    # --- Create wall rollout geometry ---
-    wall_x = []
-    wall_y = []
-
-    for i, (uids, z_loc) in enumerate(zip(uids_rows[5:], row_z[5:])):  # wall rows only
-        n = len(uids)
-        # Mirror the angle also here
-        x = (
-            360 - np.linspace(0, 360, n, endpoint=False) - 1
-        )  # -1 to center the PMT a little better
-
-        y = np.full(n, z_loc)
-
-        wall_x.append(x)
-        wall_y.append(y)
-
-        uid_order.extend(uids)
-
-    wall_x = np.concatenate(wall_x)
-    wall_y = np.concatenate(wall_y)
-
-    wall_colors = np.zeros((len(wall_x), 4))
-    wall_colors[:] = (*dots_colors[6], 1.0)
-
-    wall_scatter = ax_wall.scatter(
-        wall_x, wall_y, s=120, facecolors=wall_colors, edgecolors="black"
-    )
-    n_floor_pmts = len(floor_colors)
-    pmt_all_colors = np.concatenate([floor_colors, wall_colors])
-
+def _setup_info_text(
+    ax_info, add_info_text, colors_strings, dots_colors, dangerous_muon
+):
     # --- Setup info text ---
     ax_info.set_xlim(0, 1)
     ax_info.set_ylim(0, 1)
@@ -1273,6 +1301,78 @@ def make_gif_full(frames, bins, max_ge_energy, gif_config):
                 boxstyle="round,pad=0.4",
             )
         )
+        return stats_text, time_text, muon_veto_text, ge77_veto_text
+
+
+def make_gif_full(frames, bins, max_ge_energy, gif_config):
+    (
+        filename,
+        fps,
+        xlim,
+        zlim,
+        linger,
+        hightlight_ge77,
+        add_scintillator,
+        add_pmts,
+        neutron_popups,
+        add_info_text,
+        dots_colors,
+        colors_strings,
+        tracks_fadeout_mult,
+        n_scint_fadeout_mult,
+        pmt_fadeout_mult,
+        ge77_veto_threshold,
+        show_x,
+        field_name,
+        dangerous_muon,
+    ) = _unpack_gif_config(gif_config, max_ge_energy)
+
+    # Number of frames to generate
+    n_frames = len(bins) - 1
+
+    # --- Prepare figure and axes ---
+    # Create one figure for everyone to live on in harmony
+    fig = plt.figure(figsize=(10, 10), dpi=100.8)  # so 1008 x 1008 pixels.
+    fig, ax_main, ax_wall, ax_floor, ax_info = _setup_figure_and_axes(fig, xlim, zlim)
+
+    title = ax_main.set_title("")
+
+    # --- setup static geometry ---
+    _setup_static_geometry(ax_main, show_x)
+
+    # --- setup tracks ---
+    xz_tracks, track_scatter, ge77_scatter, ge77_mask, neutron_mask = _setup_tracks(
+        ax_main, frames, dots_colors, hightlight_ge77
+    )
+
+    # --- setup scintillator tracks if requested ---
+    if add_scintillator:
+        (
+            scintillator_neutron_scatter,
+            scintillator_muon_scatter,
+            scintillator_current_muon_scatter,
+            xz_scintillator_neutrons,
+            xz_scintillator_muons,
+        ) = _setup_scintillator_tracks(ax_main, frames, dots_colors)
+
+    # --- setup PMTs ---
+    pmt_birth_frames, pmt_uids, pmt_collection, pmt_row_colors, pmt_row_uids = (
+        _setup_pmts(ax_main, frames, dots_colors)
+    )
+
+    floor_scatter, floor_colors = _setup_floor_rollout_geometry(
+        ax_floor, uids_rows, dots_colors
+    )
+    n_floor_pmts = len(floor_colors)
+
+    wall_scatter, wall_colors = _setup_wall_rollout_geometry(
+        ax_wall, uids_rows, dots_colors
+    )
+    pmt_all_colors = np.concatenate([floor_colors, wall_colors])
+
+    stats_text, time_text, muon_veto_text, ge77_veto_text = _setup_info_text(
+        ax_info, add_info_text, colors_strings, dots_colors, dangerous_muon
+    )
 
     # Counters
     detected_neutrons = 0
