@@ -1364,7 +1364,7 @@ def make_gif_full(frames, bins, max_ge_energy, gif_config):
 
     # --- Prepare figure and axes ---
     # Create one figure for everyone to live on in harmony
-    fig = plt.figure(figsize=(10, 10), dpi=100.8)  # so 1008 x 1008 pixels.
+    fig = plt.figure(figsize=(10, 10), dpi=102.4)  # so 1024 x 1024 pixels.
     fig, ax_main, ax_wall, ax_floor, ax_info = _setup_figure_and_axes(
         fig, xlim, zlim, field_name
     )
