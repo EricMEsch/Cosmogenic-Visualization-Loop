@@ -1311,6 +1311,31 @@ def _setup_info_text(
         return stats_text, time_text, muon_veto_text, ge77_veto_text
 
 
+def _setup_neutron_popups(ax_main, dots_colors):
+    MAX_POPUPS = 20
+
+    popup_texts = []
+    popup_state = []  # (x, z, age, active)
+
+    for _ in range(MAX_POPUPS):
+        t = ax_main.text(
+            0,
+            0,
+            "+ neutron detected",
+            color="darkred",
+            fontsize=12,
+            fontweight="bold",
+            ha="center",
+            va="center",
+            alpha=0.0,  # start invisible
+            visible=True,
+        )
+        popup_texts.append(t)
+        popup_state.append({"age": 999, "active": False})
+
+    return popup_texts, popup_state, MAX_POPUPS
+
+
 def make_gif_full(frames, bins, max_ge_energy, gif_config):
     (
         filename,
@@ -1349,6 +1374,22 @@ def make_gif_full(frames, bins, max_ge_energy, gif_config):
     # --- setup static geometry ---
     _setup_static_geometry(ax_main, show_x)
 
+    # --- setup info text ---
+    stats_text, time_text, muon_veto_text, ge77_veto_text = _setup_info_text(
+        ax_info, add_info_text, colors_strings, dots_colors, dangerous_muon
+    )
+
+    # --- setup neutron popups ---
+    if neutron_popups:
+        popup_texts, popup_state, MAX_POPUPS = _setup_neutron_popups(
+            ax_main, dots_colors
+        )
+        active_popup_indices = []
+
+    # --- BLITTING SETUP ---
+    fig.canvas.draw()  # IMPORTANT: initial full draw
+
+    background = fig.canvas.copy_from_bbox(fig.bbox)
     # --- setup tracks ---
     xz_tracks, track_scatter, ge77_scatter, ge77_mask, neutron_mask = _setup_tracks(
         ax_main, frames, dots_colors, hightlight_ge77
@@ -1379,10 +1420,6 @@ def make_gif_full(frames, bins, max_ge_energy, gif_config):
     )
     pmt_all_colors = np.concatenate([floor_colors, wall_colors])
 
-    stats_text, time_text, muon_veto_text, ge77_veto_text = _setup_info_text(
-        ax_info, add_info_text, colors_strings, dots_colors, dangerous_muon
-    )
-
     # Counters
     detected_neutrons = 0
     captured_neutrons = 0
@@ -1392,8 +1429,6 @@ def make_gif_full(frames, bins, max_ge_energy, gif_config):
     # store the coordinates of the last neutron capture.
     x_last = 0.0
     z_last = 0.0
-
-    active_texts = []
 
     writer = imageio.get_writer(
         filename,
@@ -1574,43 +1609,43 @@ def make_gif_full(frames, bins, max_ge_energy, gif_config):
                     pmt_uids_current_frame = np.unique(pmt_uids[mask_current_pmts])
                     if len(pmt_uids_current_frame) > 5:
                         detected_neutrons += 1
+                        # find free slot
+                        for i in range(MAX_POPUPS):
+                            if (
+                                popup_state[i]["age"] > 30
+                                or not popup_state[i]["active"]
+                            ):
+                                popup_state[i] = {
+                                    "age": 0,
+                                    "active": True,
+                                    "x": x_last,
+                                    "z": z_last,
+                                }
+                                active_popup_indices.append(i)
+                                break
 
-                        txt = ax_main.text(
-                            x_last,
-                            z_last,
-                            "+ neutron detected",
-                            color="darkred",
-                            fontsize=12,
-                            fontweight="bold",
-                            ha="center",
-                            va="center",
-                            zorder=20,
-                            alpha=1.0,
-                        )
-
-                        active_texts.append({"artist": txt, "age": 0})
             # --- Age it and make it fade-out ---
             if neutron_popups:
-                for item in active_texts[:]:
-                    item["age"] += 1
-                    txt = item["artist"]
+                T = 30
 
-                    # total lifetime in frames
-                    T = 30
-                    age = item["age"]
+                for i in active_popup_indices[
+                    :
+                ]:  # iterate copy so we can remove safely
+                    state = popup_state[i]
+                    txt = popup_texts[i]
+
+                    age = state["age"]
 
                     if age > T:
-                        txt.remove()
-                        active_texts.remove(item)
+                        state["active"] = False
+                        txt.set_alpha(0.0)
+                        active_popup_indices.remove(i)
                         continue
 
-                    # fade out
-                    alpha = max(0, 1 - age / T)
-                    txt.set_alpha(alpha)
+                    txt.set_position((state["x"], state["z"] + 0.01 * age))
+                    txt.set_alpha(1.0 - age / T)
 
-                    # move upward slightly
-                    x, y = txt.get_position()
-                    txt.set_position((x, y + 0.01))  # tune this value
+                    state["age"] += 1
 
         # --- time label ---
         title.set_text(f"t = {t1:.2f} ns" if t1 < 1000 else f"t = {t1 / 1000:.2f} us")
@@ -1640,7 +1675,42 @@ def make_gif_full(frames, bins, max_ge_energy, gif_config):
             if primary_muon_vetoed:
                 muon_veto_text.set_text("MUON VETOED!")
 
-        fig.canvas.draw()
+        # --- BLIT RESTORE BACKGROUND ---
+        fig.canvas.restore_region(background)
+
+        # --- redraw only changed artists ---
+        ax_main.draw_artist(track_scatter)
+
+        if hightlight_ge77:
+            ax_main.draw_artist(ge77_scatter)
+
+        if add_scintillator:
+            ax_main.draw_artist(scintillator_neutron_scatter)
+            ax_main.draw_artist(scintillator_muon_scatter)
+            ax_main.draw_artist(scintillator_current_muon_scatter)
+
+        if add_pmts:
+            ax_floor.draw_artist(floor_scatter)
+            ax_wall.draw_artist(wall_scatter)
+            ax_main.draw_artist(pmt_collection)
+
+        # text overlays (IMPORTANT: must be drawn manually)
+        if add_info_text:
+            ax_info.draw_artist(stats_text)
+            ax_info.draw_artist(time_text)
+            ax_info.draw_artist(muon_veto_text)
+            ax_info.draw_artist(ge77_veto_text)
+
+        if neutron_popups:
+            for i in active_popup_indices:
+                ax_main.draw_artist(popup_texts[i])
+
+        ax_main.draw_artist(title)
+
+        # --- blit to screen buffer ---
+        fig.canvas.blit(fig.bbox)
+
+        # --- capture frame for video ---
         frame = np.asarray(fig.canvas.buffer_rgba())
         writer.append_data(frame)
 
