@@ -81,7 +81,173 @@ def create_time_bins(
     return bins
 
 
-def build_frames(
+def build_frames_x(
+    times,
+    x,
+    z,
+    particles,
+    bins,
+    times_scintillator=None,
+    x_scintillator=None,
+    z_scintillator=None,
+    particles_scintillator=None,
+    optical_triggers=None,
+    optical_hits=None,
+):
+    """
+    Convert (x,y,z,time) → awkward array of shape:
+        n_frames * var * {x, z}
+
+    Parameters
+    ----------
+    times, x, y, z : array-like
+    particles : array-like
+        PDG codes
+    bins : array-like
+        Time bin edges (length = n_frames + 1)
+    times_scintillator, x_scintillator, y_scintillator, z_scintillator : array-like, optional
+        Arguments for scintillator energy deps (if applicable)
+    times_argon, x_argon, y_argon, z_argon : array-like, optional
+        Arguments for argon energy deps (if applicable)
+
+    argon_values : optional
+    if given also adds r and z positions for the argon values to the output array.
+
+    Returns
+    -------
+    ak.Record
+        Awkward record with frame-binned data:
+
+        tracks : ak.Array
+            Particle tracks per time frame with fields:
+            birth_frame, x, z, particle.
+
+        scintillator : ak.Array, optional
+            Same structure as tracks for scintillator inputs
+            (if provided).
+
+        optical : ak.Array, optional
+            Detector hits per frame with fields:
+            birth_frame, det_uid
+            (if optical_triggers provided).
+
+        All outputs are sorted by frame and restricted to valid bins.
+    """
+
+    n_frames = len(bins) - 1
+
+    # --- binning ---
+    birth_frame = np.digitize(times, bins) - 1
+
+    # --- remove out-of-range ---
+    valid = (birth_frame >= 0) & (birth_frame < n_frames)
+
+    birth_frame = birth_frame[valid]
+    x = x[valid]
+    z = z[valid]
+    particles = particles[valid]
+
+    # --- sort by frame (Option B core idea) ---
+    order = np.argsort(birth_frame)
+
+    birth_frame = birth_frame[order]
+    x = x[order]
+    z = z[order]
+    particles = particles[order]
+
+    # --- build awkward array ---
+    frames = ak.zip({"birth_frame": birth_frame, "x": x, "z": z, "particle": particles})
+
+    if times_scintillator is not None:
+        birth_frame_scintillator = np.digitize(times_scintillator, bins) - 1
+        valid_scintillator = (birth_frame_scintillator >= 0) & (
+            birth_frame_scintillator < n_frames
+        )
+
+        birth_frame_scintillator = birth_frame_scintillator[valid_scintillator]
+        x_scintillator = x_scintillator[valid_scintillator]
+        z_scintillator = z_scintillator[valid_scintillator]
+        particles_scintillator = particles_scintillator[valid_scintillator]
+
+        order_scintillator = np.argsort(birth_frame_scintillator)
+
+        birth_frame_scintillator = birth_frame_scintillator[order_scintillator]
+        x_scintillator = x_scintillator[order_scintillator]
+        z_scintillator = z_scintillator[order_scintillator]
+        particles_scintillator = particles_scintillator[order_scintillator]
+
+        frames_scintillator = ak.zip(
+            {
+                "birth_frame": birth_frame_scintillator,
+                "x": x_scintillator,
+                "z": z_scintillator,
+                "particle": particles_scintillator,
+            }
+        )
+
+        if optical_triggers is None:
+            frames = ak.Record(
+                {
+                    "tracks": frames,
+                    "scintillator": frames_scintillator,
+                }
+            )
+
+    if optical_triggers is not None:
+        birth_frame_optical = np.digitize(optical_triggers, bins) - 1
+        valid_optical = (birth_frame_optical >= 0) & (birth_frame_optical < n_frames)
+
+        birth_frame_optical = birth_frame_optical[valid_optical]
+        optical_hits = optical_hits[valid_optical]
+
+        # detector IDs: [0, 1, 2, ..., 313]
+        det_uid = np.arange(optical_hits.shape[1])
+
+        duplicate_hits = False  # Hard-coded option if relevant later.
+
+        if duplicate_hits:
+            # Repeat entries according to hit multiplicity
+            counts = optical_hits.astype(int)
+
+            pmt_birth_frames = np.repeat(birth_frame_optical, counts.sum(axis=1))
+
+            pmt_uids = np.repeat(
+                np.tile(det_uid, len(birth_frame_optical)), counts.ravel()
+            )
+
+        else:
+            # Only care whether detector had >=1 hit
+            mask = optical_hits > 0
+
+            trigger_idx, det_idx = np.nonzero(mask)
+
+            pmt_birth_frames = birth_frame_optical[trigger_idx]
+            pmt_uids = det_uid[det_idx]
+
+        order = np.argsort(pmt_birth_frames)
+        pmt_birth_frames = pmt_birth_frames[order]
+        pmt_uids = pmt_uids[order]
+
+        frames_optical = ak.zip(
+            {
+                "birth_frame": pmt_birth_frames,
+                "det_uid": pmt_uids,
+            }
+        )
+
+        frames = ak.Record(
+            {
+                "tracks": frames,
+                "scintillator": frames_scintillator,
+                "optical": frames_optical,
+            }
+        )
+
+    return frames
+
+
+# Legacy function for old r-projection
+def build_frames_r(
     times,
     x,
     y,
@@ -122,12 +288,24 @@ def build_frames(
 
     Returns
     -------
-    ak.Array
-        Jagged array: [frame][event] -> {r, z, particles}
-        or if argon values are included:
-        Jagged array: [frame][event] -> {{r, z, particles, r_argon, z_argon, particle_argon}}
-    """
+    ak.Record
+        Awkward record with frame-binned data:
 
+        tracks : ak.Array
+            Particle tracks per time frame with fields:
+            birth_frame, r, z, particle.
+
+        scintillator : ak.Array, optional
+            Same structure as tracks for scintillator inputs
+            (if provided).
+
+        optical : ak.Array, optional
+            Detector hits per frame with fields:
+            birth_frame, det_uid
+            (if optical_triggers provided).
+
+        All outputs are sorted by frame and restricted to valid bins.
+    """
     n_frames = len(bins) - 1
 
     # --- binning ---
@@ -710,10 +888,12 @@ row_phi = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 90.0, 90.0, 90.0, 90.0, 90.0, 90.0]
 
 
 def make_gif_full(frames, bins, max_ge_energy, gif_config):
-    # Unpack config options with defaults
+    # --- Unpack config options with defaults ---
     filename = gif_config.get("filename", "out.gif")
     fps = gif_config.get("fps", 20)
-    rlim = gif_config.get("rlim", (0, np.max(r_water_tank) + 0.1))
+    xlim = gif_config.get(
+        "xlim", (-np.max(r_water_tank) - 0.1, np.max(r_water_tank) + 0.1)
+    )
     zlim = gif_config.get("zlim", (np.min(z_water_tank), np.max(z_water_tank) + 0.1))
     linger = gif_config.get("linger", 0)
     hightlight_ge77 = gif_config.get("hightlight_ge77", False)
@@ -735,9 +915,17 @@ def make_gif_full(frames, bins, max_ge_energy, gif_config):
     ge77_veto_threshold = gif_config.get(
         "ge77_veto_threshold", 6
     )  # if more than this neutrons have been detected count it as ge77 vetoed
+    show_x = gif_config.get(
+        "show_x", True
+    )  # show x on x-axis (else it shows r-projection).
+    if show_x:
+        field_name = "x"
+    else:
+        field_name = "r"
 
     dangerous_muon = max_ge_energy > dangerous_ge_threshold
 
+    # --- Set up colors ---
     if dots_colors is None:
         dots_colors = (
             "blue",
@@ -754,15 +942,16 @@ def make_gif_full(frames, bins, max_ge_energy, gif_config):
     # Number of frames to generate
     n_frames = len(bins) - 1
 
+    # --- Prepare figure and axes ---
     # Create one figure for everyone to live on in harmony
-    fig = plt.figure(figsize=(10, 10), dpi=201.6)
+    fig = plt.figure(figsize=(10, 10), dpi=100.8)  # so 1008 x 1008 pixels.
 
     fig.subplots_adjust(left=0.05, right=0.99, bottom=0.03, top=0.97)
 
     # Calculate aspect ratio
-    dr = rlim[1] - rlim[0]
+    dx = xlim[1] - xlim[0]
     dz = zlim[1] - zlim[0]
-    data_aspect = dr / dz
+    data_aspect = dx / dz
 
     sidebar_factor = 0.7  # how much of the figure width to dedicate to the sidebar
     lowerbar_factor = 0.34  # how much of the figure height to dedicate to the lower bar
@@ -801,11 +990,11 @@ def make_gif_full(frames, bins, max_ge_energy, gif_config):
         ax.set_yticks([])
 
     # --- axes ---
-    if rlim:
-        ax_main.set_xlim(*rlim)
+    if xlim:
+        ax_main.set_xlim(*xlim)
     if zlim:
         ax_main.set_ylim(*zlim)
-    ax_main.set_xlabel("r")
+    ax_main.set_xlabel("x")
     ax_main.set_ylabel("z")
 
     title = ax_main.set_title("")
@@ -861,11 +1050,13 @@ def make_gif_full(frames, bins, max_ge_energy, gif_config):
         ax_main.plot(
             r_line, z_line, color="gray", zorder=-10
         )  # -10 to be behind everything
+        if show_x:
+            ax_main.plot(-r_line, z_line, color="gray", zorder=-10)
 
     # --- setup tracks ---
-    rz_tracks = frames["tracks"]
-    ge77_mask = np.asarray((rz_tracks["particle"] // 10) == 100032077)
-    neutron_mask = np.asarray((rz_tracks["particle"] >= 1000000000))  # isotopes
+    xz_tracks = frames["tracks"]
+    ge77_mask = np.asarray((xz_tracks["particle"] // 10) == 100032077)
+    neutron_mask = np.asarray((xz_tracks["particle"] >= 1000000000))  # isotopes
 
     # --- Create the scatter objects once and update their data in each frame ---
     track_scatter = ax_main.scatter(
@@ -878,13 +1069,13 @@ def make_gif_full(frames, bins, max_ge_energy, gif_config):
 
     # --- setup scintillator tracks if requested ---
     if add_scintillator:
-        rz_scintillator = frames["scintillator"]
-        rz_scintillator_neutrons = rz_scintillator[
-            (rz_scintillator["particle"] == 2112)
-            | (rz_scintillator["particle"] == -2112)
+        xz_scintillator = frames["scintillator"]
+        xz_scintillator_neutrons = xz_scintillator[
+            (xz_scintillator["particle"] == 2112)
+            | (xz_scintillator["particle"] == -2112)
         ]
-        rz_scintillator_muons = rz_scintillator[
-            (rz_scintillator["particle"] == 13) | (rz_scintillator["particle"] == -13)
+        xz_scintillator_muons = xz_scintillator[
+            (xz_scintillator["particle"] == 13) | (xz_scintillator["particle"] == -13)
         ]
         # Also create the scatter objects
         scintillator_neutron_scatter = ax_main.scatter(
@@ -1090,7 +1281,7 @@ def make_gif_full(frames, bins, max_ge_energy, gif_config):
     primary_muon_vetoed = False
 
     # store the coordinates of the last neutron capture.
-    r_last = 0.0
+    x_last = 0.0
     z_last = 0.0
 
     active_texts = []
@@ -1107,21 +1298,21 @@ def make_gif_full(frames, bins, max_ge_energy, gif_config):
         t1 = bins[f + 1]
 
         # --- update tracks ---
-        age = np.asarray(tracks_fadeout_mult * (f - rz_tracks["birth_frame"]))
+        age = np.asarray(tracks_fadeout_mult * (f - xz_tracks["birth_frame"]))
         mask = (age >= 0) & (age < linger)
         ge77_mask_frame = ge77_mask & (age >= 0)
-        r_frame = np.asarray(rz_tracks["r"][mask])
-        z_frame = np.asarray(rz_tracks["z"][mask])
-        r_ge77_frame = np.asarray(rz_tracks["r"][ge77_mask_frame])
-        z_ge77_frame = np.asarray(rz_tracks["z"][ge77_mask_frame])
+        x_frame = np.asarray(xz_tracks[field_name][mask])
+        z_frame = np.asarray(xz_tracks["z"][mask])
+        x_ge77_frame = np.asarray(xz_tracks[field_name][ge77_mask_frame])
+        z_ge77_frame = np.asarray(xz_tracks["z"][ge77_mask_frame])
 
         alpha_frame = 1.0 - age[mask] / linger
 
-        r_last = r_frame[-1] if len(r_frame) > 0 else r_last
+        x_last = x_frame[-1] if len(x_frame) > 0 else x_last
         z_last = z_frame[-1] if len(z_frame) > 0 else z_last
 
         # --- update track scatter ---
-        track_scatter.set_offsets(np.column_stack([r_frame, z_frame]))
+        track_scatter.set_offsets(np.column_stack([x_frame, z_frame]))
         track_scatter.set_alpha(None)
         track_scatter.set_facecolors(
             np.column_stack(
@@ -1140,42 +1331,44 @@ def make_gif_full(frames, bins, max_ge_energy, gif_config):
         ge_77_captures += np.sum(ge77_mask_frame & (age == 0))
 
         # --- highlight germanium track permanently if requested ---
-        if hightlight_ge77 and len(r_ge77_frame) > 0:
-            ge77_scatter.set_offsets(np.column_stack([r_ge77_frame, z_ge77_frame]))
+        if hightlight_ge77 and len(x_ge77_frame) > 0:
+            ge77_scatter.set_offsets(np.column_stack([x_ge77_frame, z_ge77_frame]))
             ge77_scatter.set_alpha(1.0)  # Always fully opaque
             ge77_scatter.set_facecolors("darkred")
 
         # --- draw scintillator tracks if requested ---
         if add_scintillator:
             age_neutrons = np.asarray(
-                n_scint_fadeout_mult * (f - rz_scintillator_neutrons["birth_frame"])
+                n_scint_fadeout_mult * (f - xz_scintillator_neutrons["birth_frame"])
             )
-            age_muons = np.asarray(f - rz_scintillator_muons["birth_frame"])
+            age_muons = np.asarray(f - xz_scintillator_muons["birth_frame"])
 
             mask_neutrons = (age_neutrons >= 0) & (age_neutrons < linger)
             mask_muons = age_muons >= 0  # Never fade out muons.
             mask_current_muons = age_muons == 0  # But highlight current muon position
 
-            r_scint_neutrons_frame = np.asarray(
-                rz_scintillator_neutrons["r"][mask_neutrons]
+            x_scint_neutrons_frame = np.asarray(
+                xz_scintillator_neutrons[field_name][mask_neutrons]
             )
             z_scint_neutrons_frame = np.asarray(
-                rz_scintillator_neutrons["z"][mask_neutrons]
+                xz_scintillator_neutrons["z"][mask_neutrons]
             )
             alpha_scint_neutrons_frame = 1.0 - age_neutrons[mask_neutrons] / linger
 
-            r_scint_muons_frame = np.asarray(rz_scintillator_muons["r"][mask_muons])
-            z_scint_muons_frame = np.asarray(rz_scintillator_muons["z"][mask_muons])
-            r_scint_current_muon_frame = np.asarray(
-                rz_scintillator_muons["r"][mask_current_muons]
+            x_scint_muons_frame = np.asarray(
+                xz_scintillator_muons[field_name][mask_muons]
+            )
+            z_scint_muons_frame = np.asarray(xz_scintillator_muons["z"][mask_muons])
+            x_scint_current_muon_frame = np.asarray(
+                xz_scintillator_muons[field_name][mask_current_muons]
             )
             z_scint_current_muon_frame = np.asarray(
-                rz_scintillator_muons["z"][mask_current_muons]
+                xz_scintillator_muons["z"][mask_current_muons]
             )
 
             # --- update neutron scatter ---
             scintillator_neutron_scatter.set_offsets(
-                np.column_stack([r_scint_neutrons_frame, z_scint_neutrons_frame])
+                np.column_stack([x_scint_neutrons_frame, z_scint_neutrons_frame])
             )
             scintillator_neutron_scatter.set_alpha(None)
             scintillator_neutron_scatter.set_facecolors(
@@ -1191,7 +1384,7 @@ def make_gif_full(frames, bins, max_ge_energy, gif_config):
 
             # --- update muon scatter ---
             scintillator_muon_scatter.set_offsets(
-                np.column_stack([r_scint_muons_frame, z_scint_muons_frame])
+                np.column_stack([x_scint_muons_frame, z_scint_muons_frame])
             )
             scintillator_muon_scatter.set_alpha(None)
             scintillator_muon_scatter.set_facecolors("green")
@@ -1199,7 +1392,7 @@ def make_gif_full(frames, bins, max_ge_energy, gif_config):
             # --- update highlighted current muon scatter ---
             scintillator_current_muon_scatter.set_offsets(
                 np.column_stack(
-                    [r_scint_current_muon_frame, z_scint_current_muon_frame]
+                    [x_scint_current_muon_frame, z_scint_current_muon_frame]
                 )
             )
             scintillator_current_muon_scatter.set_alpha(None)
@@ -1274,7 +1467,7 @@ def make_gif_full(frames, bins, max_ge_energy, gif_config):
                         detected_neutrons += 1
 
                         txt = ax_main.text(
-                            r_last,
+                            x_last,
                             z_last,
                             "+ neutron detected",
                             color="darkred",
@@ -1331,7 +1524,7 @@ def make_gif_full(frames, bins, max_ge_energy, gif_config):
             if detected_neutrons > ge77_veto_threshold:
                 ge77_veto_text.set_text("Ge77 VETOED!")
                 # Box green if we vetoed correctly, else it stays red
-                if len(r_ge77_frame) > 0:
+                if len(x_ge77_frame) > 0:
                     ge77_veto_text.set_color("green")
                     bbox = ge77_veto_text.get_bbox_patch()
                     bbox.set_edgecolor("green")
@@ -1458,22 +1651,37 @@ def render_gif(
     z_scinti = z_scinti[mask]
     times_scinti = times_scinti[mask]
     particles_scinti = particles_scinti[mask]
-
-    frames = build_frames(
-        time,
-        x_tracks,
-        y_tracks,
-        z_tracks,
-        particles_tracks,
-        bins,
-        times_scintillator=times_scinti,
-        x_scintillator=x_scinti,
-        y_scintillator=y_scinti,
-        z_scintillator=z_scinti,
-        particles_scintillator=particles_scinti,
-        optical_triggers=optical_triggers,
-        optical_hits=optical_hits,
-    )
+    show_x = gif_config.get("show_x", True)
+    if show_x:
+        frames = build_frames_x(
+            time,
+            x_tracks,
+            z_tracks,
+            particles_tracks,
+            bins,
+            times_scintillator=times_scinti,
+            x_scintillator=x_scinti,
+            z_scintillator=z_scinti,
+            particles_scintillator=particles_scinti,
+            optical_triggers=optical_triggers,
+            optical_hits=optical_hits,
+        )
+    else:
+        frames = build_frames_r(
+            time,
+            x_tracks,
+            y_tracks,
+            z_tracks,
+            particles_tracks,
+            bins,
+            times_scintillator=times_scinti,
+            x_scintillator=x_scinti,
+            y_scintillator=y_scinti,
+            z_scintillator=z_scinti,
+            particles_scintillator=particles_scinti,
+            optical_triggers=optical_triggers,
+            optical_hits=optical_hits,
+        )
 
     (
         dangerous_muon,
