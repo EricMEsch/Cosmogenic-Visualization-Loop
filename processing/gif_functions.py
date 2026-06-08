@@ -953,7 +953,7 @@ def _unpack_gif_config(gif_config, max_ge_energy):
     )
 
 
-def _setup_figure_and_axes(fig, xlim, zlim):
+def _setup_figure_and_axes(fig, xlim, zlim, field_name):
     fig.subplots_adjust(left=0.05, right=0.99, bottom=0.03, top=0.97)
 
     # Calculate aspect ratio
@@ -961,8 +961,8 @@ def _setup_figure_and_axes(fig, xlim, zlim):
     dz = zlim[1] - zlim[0]
     data_aspect = dx / dz
 
-    sidebar_factor = 0.7  # how much of the figure width to dedicate to the sidebar
-    lowerbar_factor = 0.34  # how much of the figure height to dedicate to the lower bar
+    sidebar_factor = 0.64  # how much of the figure width to dedicate to the sidebar
+    lowerbar_factor = 0.36  # how much of the figure height to dedicate to the lower bar
 
     main_height = 1
     main_width = main_height * data_aspect
@@ -991,6 +991,8 @@ def _setup_figure_and_axes(fig, xlim, zlim):
     ax_wall.set_aspect("auto")
     # Anchor the floor axis to the bottom left.
     ax_floor.set_anchor("SW")
+    ax_info.set_anchor("SW")
+    ax_main.set_aspect("equal", adjustable="box")
 
     # Remove the ticks for the everything but the main
     for ax in [ax_wall, ax_floor, ax_info]:
@@ -1002,7 +1004,7 @@ def _setup_figure_and_axes(fig, xlim, zlim):
         ax_main.set_xlim(*xlim)
     if zlim:
         ax_main.set_ylim(*zlim)
-    ax_main.set_xlabel("x")
+    ax_main.set_xlabel(field_name)
     ax_main.set_ylabel("z")
     # Set the wall axis ticks myself
     ax_wall.set_xlim(0, 365)
@@ -1234,11 +1236,11 @@ def _setup_info_text(
             (dots_colors[4], f"{colors_strings[4]} Current muon position"),
             (dots_colors[5], f"{colors_strings[5]} Recent PMT hits"),
         ]
-
+        left_shift = 0.04
         y = 0.95
         for color, text in legend_lines:
             ax_info.scatter(
-                0.07,
+                0.07 - left_shift,
                 y - 0.015,
                 s=120,
                 marker="s",
@@ -1250,20 +1252,25 @@ def _setup_info_text(
 
             # draw label text
             ax_info.text(
-                0.12, y, text, fontsize=11, va="top", transform=ax_info.transAxes
+                0.12 - left_shift,
+                y,
+                text,
+                fontsize=11,
+                va="top",
+                transform=ax_info.transAxes,
             )
             y -= 0.08
 
         stats_text = ax_info.text(
-            0.05, 0.37, "", fontsize=11, va="top", family="monospace"
+            0.05 - left_shift, 0.37, "", fontsize=11, va="top", family="monospace"
         )
         time_text = ax_info.text(
-            0.05, 0.11, "", fontsize=11, va="top", family="monospace"
+            0.05 - left_shift, 0.11, "", fontsize=11, va="top", family="monospace"
         )
         # Box green if vetoed correctly, else red
         muon_box_color = "green" if dangerous_muon else "red"
         muon_veto_text = ax_info.text(
-            0.65,
+            0.65 - left_shift,
             0.8,
             "",
             fontsize=20,
@@ -1283,7 +1290,7 @@ def _setup_info_text(
         )
 
         ge77_veto_text = ax_info.text(
-            0.65,
+            0.65 - left_shift,
             0.5,
             "",
             fontsize=20,
@@ -1333,7 +1340,9 @@ def make_gif_full(frames, bins, max_ge_energy, gif_config):
     # --- Prepare figure and axes ---
     # Create one figure for everyone to live on in harmony
     fig = plt.figure(figsize=(10, 10), dpi=100.8)  # so 1008 x 1008 pixels.
-    fig, ax_main, ax_wall, ax_floor, ax_info = _setup_figure_and_axes(fig, xlim, zlim)
+    fig, ax_main, ax_wall, ax_floor, ax_info = _setup_figure_and_axes(
+        fig, xlim, zlim, field_name
+    )
 
     title = ax_main.set_title("")
 
