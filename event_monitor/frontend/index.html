@@ -46,14 +46,38 @@
       <div id="event-id">—</div>
     </div>
 
-    <div class="block">
+    <div class="block system-block">
       <div class="label">SYSTEM</div>
-      <div id="system">Initializing...</div>
-    </div>
 
-    <div class="block">
-      <div class="label">STATUS</div>
-      <pre id="status">—</pre>
+      <div class="system-grid">
+
+        <!-- LEFT COLUMN -->
+        <div class="system-left">
+
+          <div class="sub-block">
+            <div id="system">Initializing...</div>
+          </div>
+
+          <div class="sub-block">
+            <pre id="status">—</pre>
+          </div>
+
+        </div>
+
+        <!-- RIGHT COLUMN -->
+        <div class="system-right">
+
+          <div class="sub-block hardware-block">
+            <div class="sub-label">HARDWARE</div>
+            <pre id="hardware">
+    core_temp: —
+    disk_usage: —
+            </pre>
+          </div>
+
+        </div>
+
+      </div>
     </div>
 
     <div class="block">

@@ -39,7 +39,8 @@ function updateScheduler(msg) {
   const box = document.getElementById("scheduler");
 
   const line = document.createElement("div");
-  line.textContent = msg;
+  line.textContent =
+    "[" + new Date().toLocaleTimeString() + "] " + msg;
 
   box.appendChild(line);
 
@@ -51,7 +52,8 @@ function updateJeff(msg) {
   const box = document.getElementById("jeff");
 
   const line = document.createElement("div");
-  line.textContent = msg;
+  line.textContent =
+    "[" + new Date().toLocaleTimeString() + "] " + msg;
 
   box.appendChild(line);
 
@@ -63,7 +65,8 @@ function updateJeb(msg) {
   const box = document.getElementById("jeb");
 
   const line = document.createElement("div");
-  line.textContent = msg;
+  line.textContent =
+    "[" + new Date().toLocaleTimeString() + "] " + msg;
 
   box.appendChild(line);
 
@@ -75,12 +78,31 @@ function updateJenny(msg) {
   const box = document.getElementById("jenny");
 
   const line = document.createElement("div");
-  line.textContent = msg;
+  line.textContent =
+    "[" + new Date().toLocaleTimeString() + "] " + msg;
 
   box.appendChild(line);
 
   // optional: auto-scroll like log
   box.scrollTop = box.scrollHeight;
+}
+
+function updateCurOS(msg) {
+  const box = document.getElementById("curos");
+
+  const line = document.createElement("div");
+  line.textContent =
+    "[" + new Date().toLocaleTimeString() + "] " + msg;
+
+  box.appendChild(line);
+
+  // optional: auto-scroll like log
+  box.scrollTop = box.scrollHeight;
+}
+
+function updateMonitor(msg) {
+  const box = document.getElementById("hardware");
+  box.textContent = msg;
 }
 
 function updateEventPopup(msg_green, msg_inner) {
@@ -148,6 +170,11 @@ function handleEvent(msg) {
     case "Jenny":
       updateJenny(`[${msg.source}] ${msg.message}`);
       break;
+    case "CurOS":
+      updateCurOS(`[${msg.source}] ${msg.message}`);
+      break;
+    case "Monitor":
+      updateMonitor(`${msg.message}`);
     default:
       log(`[${msg.source}] ${msg.message}`);
   }

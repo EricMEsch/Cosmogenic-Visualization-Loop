@@ -4,6 +4,7 @@ import time
 import subprocess
 from launch_workers import MAX_WORKERS
 import sys
+import numpy as np
 
 sys.path.append("event_monitor/frontend")
 sys.path.append("scheduling")
@@ -17,7 +18,107 @@ TARGET_PLAYLIST_SIZE = 10
 
 CURR_JOB_ID = 0
 
-CLEANUP_INTERVAL = 60  # 2 hours in seconds
+CLEANUP_INTERVAL = 60 * 60 * 2  # every 2 hours
+
+LAST_TEN_CPU_TEMPS = []
+ACCEPTABLE_CPU_FLUCTUATION = 4.0  # Celsius
+
+
+def get_cpu_temp():
+    # 1. Try Raspberry Pi thermal zone
+    try:
+        path = "/sys/class/thermal/thermal_zone0/temp"
+        if os.path.exists(path):
+            with open(path, "r") as f:
+                return float(f.read().strip()) / 1000.0
+    except Exception:
+        pass
+    try:
+        import psutil
+
+        temps = psutil.sensors_temperatures()
+        for entries in temps.values():
+            if entries:
+                return entries[0].current
+    except Exception:
+        pass
+
+    return None
+
+
+def get_disk_usage(path="/"):
+    try:
+        stat = os.statvfs(path)
+        total = stat.f_blocks * stat.f_frsize
+        free = stat.f_bfree * stat.f_frsize
+        used = total - free
+        usage_percent = used / total * 100
+        return usage_percent
+    except Exception:
+        return None
+
+
+def check_system_health():
+    global LAST_TEN_CPU_TEMPS
+    global ACCEPTABLE_CPU_FLUCTUATION
+    publish_event(
+        source="CurOS",
+        type_="info",
+        message="Monitoring system health...",
+    )
+    temp = get_cpu_temp()
+    disk = get_disk_usage("/")
+
+    if disk is not None:
+        if disk > 90:
+            publish_event(
+                source="CurOS",
+                type_="warning",
+                message=f"Low disk space! ({disk:.1f}%)",
+            )
+
+    if temp is not None:
+        LAST_TEN_CPU_TEMPS.append(temp)
+        if len(LAST_TEN_CPU_TEMPS) > 10:
+            np.mean(LAST_TEN_CPU_TEMPS[-10:])
+            LAST_TEN_CPU_TEMPS.pop(0)
+            if (temp - np.mean(LAST_TEN_CPU_TEMPS)) > ACCEPTABLE_CPU_FLUCTUATION:
+                publish_event(
+                    source="CurOS",
+                    type_="info",
+                    message="Warning: Core temperature rising...",
+                )
+            elif (temp - np.mean(LAST_TEN_CPU_TEMPS)) < -ACCEPTABLE_CPU_FLUCTUATION:
+                publish_event(
+                    source="CurOS",
+                    type_="info",
+                    message="Core temperature dropping...",
+                )
+        if temp > 80:
+            publish_event(
+                source="CurOS",
+                type_="warning",
+                message=f"Core overheating! Temperature at {temp:.1f}°C! Starting emergency shutdown...",
+            )
+            with open("overheat_shutdown.log", "a") as f:
+                f.write(
+                    f"{time.ctime()}: CPU temp {temp:.1f}°C exceeded threshold. Initiating shutdown.\n"
+                )
+            time.sleep(5)
+            subprocess.run(["sudo", "shutdown", "-h", "now"])
+        elif (
+            temp > 65
+        ):  # not like the elif is necessary. We shouldn't be here if temp > 80
+            publish_event(
+                source="CurOS",
+                type_="warning",
+                message=f"High Core temperature detected: {temp:.1f}°C! Danger imminent...",
+            )
+    publish_event(
+        source="Monitor",
+        type_="info",
+        message=f"core_temp: {temp:.1f}°C\ndisk_usage: {disk:.1f}%",
+    )
 
 
 def load(file):
@@ -189,7 +290,9 @@ def main():
             last_cleanup_time = now
 
         publish_event(source="Scheduler", type_="info", message="Sleeping...")
-        time.sleep(30)
+        time.sleep(15)
+        check_system_health()
+        time.sleep(15)
 
 
 if __name__ == "__main__":
