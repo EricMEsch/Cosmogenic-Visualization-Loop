@@ -105,6 +105,7 @@ def run_gif(input_files_string, n_random_events, job_id=None):
                 "add_info_text": True,
                 "n_scint_fadeout_mult": 1,
                 "ge77_veto_threshold": ge77_veto_threshold,
+                "show_x": False,
             }
             (
                 dangerous_muon,
