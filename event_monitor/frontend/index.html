@@ -14,9 +14,11 @@
   <div id="video-panel">
     <video id="player" autoplay muted></video>
 
-    <div id="overlay">
-      <div id="event-title">Waiting for event...</div>
-      <div id="event-meta"></div>
+    <div id="event-overlay" class="hidden">
+      <div id="event-overlay-inner">
+        <div id="event-state">Waiting for next muon...</div>
+        <div id="event-meta">time since last muon: —</div>
+      </div>
     </div>
   </div>
 

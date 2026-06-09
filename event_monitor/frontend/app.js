@@ -105,11 +105,6 @@ function updateMonitor(msg) {
   box.textContent = msg;
 }
 
-function updateEventPopup(msg_green, msg_inner) {
-  document.getElementById("event-title").innerText = msg_green;
-  document.getElementById("event-meta").innerText = msg_inner;
-}
-
 function updateGlobalMetadata(globalMetadata) {
   const startTime = new Date(globalMetadata.start_time);
   const pad = (n) => String(n).padStart(2, "0");
@@ -180,6 +175,59 @@ function handleEvent(msg) {
   }
 }
 
+// -----------------------------
+// Event overlay
+// -----------------------------
+
+function showIdleOverlay() {
+  overlay.classList.remove("disappear");
+  overlay.classList.add("show");
+  overlay.classList.remove("hidden");
+
+  const seconds = ((Date.now() - lastMuonTime) / 1000).toFixed(1);
+
+  stateEl.textContent = "Waiting for next muon...";
+  metaEl.textContent = `time since last muon: ${seconds}s`;
+}
+
+function showNewEventOverlay(callback) {
+  overlay.classList.remove("hidden", "disappear");
+  overlay.classList.add("show");
+
+  stateEl.textContent = "New muon event detected";
+  metaEl.textContent = "Starting visualization...";
+  setTimeout(() => {
+    triggerGlitch(overlay);
+    overlay.classList.add("disappear");
+
+    setTimeout(() => {
+      overlay.classList.remove("show");
+      overlay.classList.add("hidden");
+
+      if (callback) callback();
+    }, 1000); // must match CSS transition duration
+  }, 3000);
+}
+
+function triggerGlitch(el) {
+  el.classList.remove("glitch"); // reset
+
+  // force reflow so animation restarts
+  void el.offsetWidth;
+
+  el.classList.add("glitch");
+}
+
+// -----------------------------
+// Core: play event
+// -----------------------------
+
+function idleplay(time) {
+  updateStatus("IDLE");
+  showIdleOverlay();
+  setTimeout(fetchNextAndPlay, time);
+}
+
 async function fetchNextAndPlay() {
   try {
     const res = await fetch("/playlist/next");
@@ -190,11 +238,7 @@ async function fetchNextAndPlay() {
     updateGlobalMetadata(globalMetadata);
 
     if (!data.item) {
-      updateStatus("IDLE");
-      updateEventPopup("Waiting for new events...", "");
-
-      // retry after delay instead of stopping
-      setTimeout(fetchNextAndPlay, 2000);
+      idleplay(2000);
       return;
     }
 
@@ -209,10 +253,7 @@ async function fetchNextAndPlay() {
   }
 }
 
-// -----------------------------
-// Core: play event
-// -----------------------------
-function playEvent(path) {
+async function playEvent(path) {
   const player = document.getElementById("player");
 
   let eventName = path.split("/").pop();
@@ -221,42 +262,59 @@ function playEvent(path) {
   const parts = eventName.split("_");
   eventName = `${parts[0]}_${parts[2]}.${parts[1]}`;
 
-  document.getElementById("event-id").innerText = eventName;
+  log("Buffering event: " + eventName);
 
-  updateEventPopup(eventName, "Loading metadata...");
-
+  // Reset video
   player.pause();
   player.autoplay = false;
   player.removeAttribute("src");
   player.load();
+
+  // Load next video while overlay is visible
   player.src = path + "?t=" + Date.now();
-
-  player.onloadeddata = async () => {
-    log("Buffering event: " + eventName);
-
-    await new Promise((resolve) => {
-      const check = () => {
-        if (player.readyState >= 4) return resolve();
-        requestAnimationFrame(check);
-      };
-      check();
-    });
-
-    log("Playing event: " + eventName);
-    updateStatus("PLAYING");
-
-    player.play();
-  };
-
-  updateEventPopup(eventName, "Showing event visualization...");
 
   player.onerror = () => {
     log("ERROR loading: " + path);
     updateStatus("VIDEO ERROR");
   };
 
+  await new Promise((resolve) => {
+    player.onloadeddata = () => {
+      const check = () => {
+        if (player.readyState >= 4) {
+          resolve();
+        } else {
+          requestAnimationFrame(check);
+        }
+      };
+      check();
+    };
+  });
+
+  // Overlay animation
+  showNewEventOverlay(async () => {
+    log("Playing event: " + eventName);
+    updateStatus("PLAYING");
+
+    // Fade video in
+    player.classList.add("visible");
+    triggerGlitch(player);
+
+    try {
+      await player.play();
+    } catch (err) {
+      console.error(err);
+    }
+  });
+
   player.onended = () => {
-    fetchNextAndPlay();
+    lastMuonTime = Date.now();
+    triggerGlitch(player);
+    player.classList.remove("visible");
+
+    setTimeout(() => {
+      idleplay(10000);
+    }, 1400);
   };
 }
 
@@ -270,7 +328,19 @@ function heartbeat() {
 // -----------------------------
 // Main loop
 // -----------------------------
+
+let lastMuonTime = Date.now();
+const overlay = document.getElementById("event-overlay");
+const stateEl = document.getElementById("event-state");
+const metaEl = document.getElementById("event-meta");
 setInterval(heartbeat, 1000);
+// Update idle overlay timer every 1s if visible
+setInterval(() => {
+  if (overlay.classList.contains("show") && !overlay.classList.contains("disappear") && (stateEl.textContent === "Waiting for next muon...")) {
+    const seconds = ((Date.now() - lastMuonTime) / 1000).toFixed(1);
+    metaEl.textContent = `time since last muon: ${seconds}s`;
+  }
+}, 1000);
 
 // initial load
 fetchNextAndPlay();
