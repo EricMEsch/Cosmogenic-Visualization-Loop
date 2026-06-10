@@ -94,7 +94,7 @@ def check_system_health():
                     type_="info",
                     message="Core temperature dropping...",
                 )
-        if temp > 80:
+        if temp > 100:
             publish_event(
                 source="CurOS",
                 type_="warning",
@@ -107,13 +107,15 @@ def check_system_health():
             time.sleep(5)
             subprocess.run(["sudo", "shutdown", "-h", "now"])
         elif (
-            temp > 65
-        ):  # not like the elif is necessary. We shouldn't be here if temp > 80
+            temp > 75
+        ):  # not like the elif is necessary. We shouldn't be here if temp > 100
             publish_event(
                 source="CurOS",
                 type_="warning",
                 message=f"High Core temperature detected: {temp:.1f}°C! Danger imminent...",
             )
+            with open("overheat_shutdown.log", "a") as f:
+                f.write(f"{time.ctime()}: CPU temp {temp:.1f}°C Warning.\n")
     publish_event(
         source="Monitor",
         type_="info",
