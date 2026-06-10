@@ -184,7 +184,7 @@ function showIdleOverlay() {
   overlay.classList.add("show");
   overlay.classList.remove("hidden");
 
-  const seconds = ((Date.now() - lastMuonTime) / 1000).toFixed(1);
+  const seconds = ((Date.now() - lastMuonTime) / 1000).toFixed(0);
 
   stateEl.textContent = "Waiting for next muon...";
   metaEl.textContent = `time since last muon: ${seconds}s`;
@@ -206,7 +206,7 @@ function showNewEventOverlay(callback) {
 
       if (callback) callback();
     }, 1000); // must match CSS transition duration
-  }, 3000);
+  }, 4000);
 }
 
 function triggerGlitch(el) {
@@ -299,12 +299,13 @@ async function playEvent(path) {
     // Fade video in
     player.classList.add("visible");
     triggerGlitch(player);
-
-    try {
-      await player.play();
-    } catch (err) {
-      console.error(err);
-    }
+    setTimeout(async () => {
+      try {
+        await player.play();
+      } catch (err) {
+        console.error(err);
+      }
+    }, 1000);
   });
 
   player.onended = () => {
