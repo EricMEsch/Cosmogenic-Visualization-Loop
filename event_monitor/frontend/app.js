@@ -338,7 +338,7 @@ setInterval(heartbeat, 1000);
 // Update idle overlay timer every 1s if visible
 setInterval(() => {
   if (overlay.classList.contains("show") && !overlay.classList.contains("disappear") && (stateEl.textContent === "Waiting for next muon...")) {
-    const seconds = ((Date.now() - lastMuonTime) / 1000).toFixed(1);
+    const seconds = ((Date.now() - lastMuonTime) / 1000).toFixed(0);
     metaEl.textContent = `time since last muon: ${seconds}s`;
   }
 }, 1000);
