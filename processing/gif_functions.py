@@ -1809,20 +1809,27 @@ def render_gif(
     # do pmt processing
     all_detectors = np.arange(6000, 6314)
 
-    grouped = ak.Array(
-        [
-            optical_one_event[optical_one_event["det_uid"] == det]
-            for det in all_detectors
-        ]
-    )
+    if len(optical_one_event) > 0:
+        grouped = ak.Array(
+            [
+                optical_one_event[optical_one_event["det_uid"] == det]
+                for det in all_detectors
+            ]
+        )
 
-    optical_grouped = align_detectors(grouped)
-    optical_triggers = build_hardware_triggers(
-        optical_grouped, multiplicity_threshold=1, timegate=1, trigger_deadtime=4
-    )
-    optical_hits = build_hits(optical_grouped, optical_triggers[0], 4, 4, 0)
-    optical_hits = np.swapaxes(np.squeeze(ak.to_numpy(optical_hits), axis=1), 0, 1)
-    optical_triggers = optical_triggers[0][0]
+        optical_grouped = align_detectors(grouped)
+        optical_triggers = build_hardware_triggers(
+            optical_grouped, multiplicity_threshold=1, timegate=1, trigger_deadtime=4
+        )
+        optical_hits = build_hits(optical_grouped, optical_triggers[0], 4, 4, 0)
+        # The array actually is regular, because the jaggedness comes from the events.
+        # Every detectors has the same hardware triggers --> same number of hits after build_hits
+        optical_hits = np.swapaxes(np.squeeze(ak.to_numpy(optical_hits), axis=1), 0, 1)
+        optical_triggers = optical_triggers[0][0]
+    else:
+        optical_triggers = np.array([])
+        optical_hits = np.empty((0, 314), dtype=int)
+
     time = tracks_one_event["time"]
     bins = create_time_bins(
         time,
