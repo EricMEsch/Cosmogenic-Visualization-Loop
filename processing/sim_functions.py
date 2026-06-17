@@ -6,7 +6,7 @@ import os
 import subprocess
 
 
-CYL_RADIUS = 600.0
+CYL_RADIUS = 550.0
 CYL_Z_MIN = -410.0
 CYL_Z_MAX = 410.0
 
