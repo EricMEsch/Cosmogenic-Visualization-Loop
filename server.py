@@ -166,4 +166,4 @@ def redis_listener():
 if __name__ == "__main__":
     socketio.start_background_task(redis_listener)
 
-    socketio.run(app, host="0.0.0.0", port=8000, debug=True)
+    socketio.run(app, host="0.0.0.0", port=8000, debug=True, allow_unsafe_werkzeug=True)

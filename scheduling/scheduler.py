@@ -226,7 +226,7 @@ def cleanup():
                 gif_shown is True
                 and (primary_muon_vetoed is True or dangerous_muon is False)
                 and ge_77_captures == 0
-                and detected_neutrons < 6
+                and detected_neutrons < 5
             )
 
             if should_delete:

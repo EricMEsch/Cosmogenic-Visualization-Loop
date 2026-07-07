@@ -90,7 +90,7 @@ def run_gif(input_files_string, n_random_events, job_id=None):
 
         generated_files = []
         for i in range(n_random_events):
-            ge77_veto_threshold = 6  # if more than this neutrons have been detected count it as ge77 vetoed
+            ge77_veto_threshold = 4  # if more than this neutrons have been detected count it as ge77 vetoed
             GIF_config = {
                 "event": i,
                 "number_of_frames": 1000,

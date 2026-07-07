@@ -16,5 +16,7 @@ cleanup() {
 # Trap Ctrl+C and termination signals
 trap cleanup SIGINT SIGTERM EXIT
 
+# Clear upon start in case of previous shutdown
+: > out/queue.yaml
 python3 scheduling/launch_workers.py
 python3 scheduling/scheduler.py
